@@ -5,8 +5,8 @@ WORKDIR /app
 # Copy everything (respects .dockerignore — excludes node_modules, .git, etc.)
 COPY . .
 
-# Install ALL workspace dependencies
-RUN npm ci --include-workspace-root
+# Install ALL workspace dependencies (use npm install for broader compatibility)
+RUN npm install --include-workspace-root
 
 # Build shared package first (backend depends on it)
 RUN npm run build -w @apartment/shared
