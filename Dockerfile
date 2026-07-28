@@ -2,18 +2,11 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy root package files first (leverage Docker cache)
-COPY package.json package-lock.json ./
-COPY shared/package.json shared/
-COPY backend/package.json backend/
-COPY frontend/package.json frontend/
+# Copy everything (respects .dockerignore — excludes node_modules, .git, etc.)
+COPY . .
 
-# Install ALL workspace dependencies (this links @apartment/shared)
+# Install ALL workspace dependencies
 RUN npm ci --include-workspace-root
-
-# Copy application source code
-COPY shared ./shared
-COPY backend ./backend
 
 # Build shared package first (backend depends on it)
 RUN npm run build -w @apartment/shared
@@ -38,10 +31,10 @@ COPY --from=builder /app/backend/package.json backend/package.json
 COPY --from=builder /app/shared shared
 COPY --from=builder /app/node_modules node_modules
 
-# Create uploads directory for multer file uploads
+# Create uploads directory for file uploads at runtime
 RUN mkdir -p backend/uploads
 
 EXPOSE 4000
 
 # Run migrations on startup, then start the server
-CMD sh -c "cd backend && npx prisma migrate deploy && node dist/index.js"
+CMD ["sh", "-c", "cd backend && npx prisma migrate deploy && node dist/index.js"]

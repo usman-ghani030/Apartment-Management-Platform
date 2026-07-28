@@ -2,3 +2,7 @@ node_modules
 .git
 .env
 *.md
+dist
+docs
+.agents
+uploads
