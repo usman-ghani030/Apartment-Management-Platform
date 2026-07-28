@@ -2,6 +2,26 @@ import type { ApiResponse, AuthResponse, SignupInput, LoginInput } from '@apartm
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
+// ── Token storage (cross-origin safe, no cookies needed) ────────────────────
+let authToken: string | null = null;
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+  if (token) {
+    try { localStorage.setItem('omni-auth-token', token); } catch {}
+  } else {
+    try { localStorage.removeItem('omni-auth-token'); } catch {}
+  }
+}
+
+export function getAuthToken(): string | null {
+  if (!authToken) {
+    try { authToken = localStorage.getItem('omni-auth-token'); } catch {}
+  }
+  return authToken;
+}
+
+// ── Request helper ─────────────────────────────────────────────────────────
 interface RequestOptions {
   method?: string;
   body?: unknown;
@@ -13,6 +33,12 @@ async function request<T>(
   options: RequestOptions = {}
 ): Promise<T> {
   const { method = 'GET', body, headers = {} } = options;
+
+  // Include auth token if available (works cross-origin without cookies)
+  const token = getAuthToken();
+  if (token) {
+    headers['x-access-token'] = token;
+  }
 
   const config: RequestInit = {
     method,
@@ -66,9 +92,14 @@ export function apiDelete<T>(path: string): Promise<T> {
 }
 
 export async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {};
+  if (token) headers['x-access-token'] = token;
+
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
     credentials: 'include',
+    headers,
     body: formData,
   });
   const json: ApiResponse<T> = await res.json();
@@ -81,20 +112,32 @@ export async function apiUpload<T>(path: string, formData: FormData): Promise<T>
 // ── Auth API ────────────────────────────────────────────────────────────────
 
 export const auth = {
-  signup: (data: SignupInput) =>
-    request<AuthResponse>('/api/v1/auth/signup', {
+  signup: async (data: SignupInput) => {
+    const result = await request<AuthResponse & { accessToken?: string }>('/api/v1/auth/signup', {
       method: 'POST',
       body: data,
-    }),
+    });
+    if (result.accessToken) {
+      setAuthToken(result.accessToken);
+    }
+    return result as AuthResponse;
+  },
 
-  login: (data: LoginInput) =>
-    request<AuthResponse>('/api/v1/auth/login', {
+  login: async (data: LoginInput) => {
+    const result = await request<AuthResponse & { accessToken?: string }>('/api/v1/auth/login', {
       method: 'POST',
       body: data,
-    }),
+    });
+    if (result.accessToken) {
+      setAuthToken(result.accessToken);
+    }
+    return result as AuthResponse;
+  },
 
-  logout: () =>
-    request<{ message: string }>('/api/v1/auth/logout', { method: 'POST' }),
+  logout: async () => {
+    setAuthToken(null);
+    return request<{ message: string }>('/api/v1/auth/logout', { method: 'POST' });
+  },
 
   me: () => request<AuthResponse>('/api/v1/auth/me'),
 

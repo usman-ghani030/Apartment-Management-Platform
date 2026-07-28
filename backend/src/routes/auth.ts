@@ -81,7 +81,7 @@ router.post('/signup', async (req, res, next) => {
     // Set tokens as HTTP-only cookies
     res.cookie('token', accessToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: true,
       sameSite: 'none',
       maxAge: 15 * 60 * 1000, // 15 minutes
       path: '/',
@@ -89,7 +89,7 @@ router.post('/signup', async (req, res, next) => {
 
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: true,
       sameSite: 'none',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       path: '/',
@@ -111,9 +111,10 @@ router.post('/signup', async (req, res, next) => {
       status: 'ACTIVE',
     };
 
-    const response: AuthResponse = {
+    const response = {
       user: userProfile,
       memberships: [membershipProfile],
+      accessToken,
     };
 
     sendSuccess(res, response, 201);
@@ -148,7 +149,7 @@ router.post('/login', async (req, res, next) => {
 
     res.cookie('token', accessToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: true,
       sameSite: 'none',
       maxAge: 15 * 60 * 1000,
       path: '/',
@@ -156,7 +157,7 @@ router.post('/login', async (req, res, next) => {
 
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: true,
       sameSite: 'none',
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/',
@@ -178,9 +179,10 @@ router.post('/login', async (req, res, next) => {
       status: m.status as import('@apartment/shared').MembershipStatus,
     }));
 
-    const response: AuthResponse = {
+    const response = {
       user: userProfile,
       memberships: membershipProfiles,
+      accessToken,
     };
 
     sendSuccess(res, response);
@@ -197,7 +199,7 @@ router.post('/logout', (_req, res) => {
   // Clear the auth cookies
   res.cookie('token', '', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: true,
     sameSite: 'none',
     maxAge: 0,
     path: '/',
@@ -205,7 +207,7 @@ router.post('/logout', (_req, res) => {
 
   res.cookie('refreshToken', '', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: true,
     sameSite: 'none',
     maxAge: 0,
     path: '/',
@@ -266,7 +268,7 @@ router.post('/refresh', async (req, res, next) => {
 
     res.cookie('token', newAccessToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: true,
       sameSite: 'none',
       maxAge: 15 * 60 * 1000,
       path: '/',
@@ -274,7 +276,7 @@ router.post('/refresh', async (req, res, next) => {
 
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: true,
       sameSite: 'none',
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/',
