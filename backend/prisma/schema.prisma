@@ -1,0 +1,475 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  SUPER_ADMIN
+  COMMITTEE_ADMIN
+  RESIDENT
+  SECURITY_GUARD
+  VENDOR
+}
+
+enum MembershipStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum UnitType {
+  OWNER_OCCUPIED
+  RENTED
+  VACANT
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  OVERDUE
+  CANCELLED
+  DISPUTED
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum PollStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
+enum ResultsVisibility {
+  LIVE
+  AFTER_CLOSE
+  NEVER
+}
+
+enum VisitorPassStatus {
+  PENDING
+  APPROVED
+  CHECKED_IN
+  CHECKED_OUT
+  EXPIRED
+  CANCELLED
+}
+
+enum GateLogAction {
+  ENTRY
+  EXIT
+}
+
+model VisitorPass {
+  id             String            @id @default(uuid())
+  societyId      String
+  society        Society           @relation(fields: [societyId], references: [id])
+  unitId         String
+  unit           Unit              @relation(fields: [unitId], references: [id])
+  residentId     String
+  resident       User              @relation(fields: [residentId], references: [id])
+  visitorName    String
+  visitorPhone   String
+  visitorEmail   String?
+  vehicleNumber  String?
+  purpose        String?
+  expectedArrival DateTime?
+  expectedDeparture DateTime?
+  status         VisitorPassStatus @default(PENDING)
+  qrToken        String            @unique
+  approvedAt     DateTime?
+  expiresAt      DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  deletedAt      DateTime?
+
+  gateLogs GateLog[]
+
+  @@index([societyId])
+  @@index([societyId, status])
+  @@index([unitId])
+  @@index([qrToken])
+}
+
+model GateLog {
+  id            String        @id @default(uuid())
+  societyId     String
+  society       Society       @relation(fields: [societyId], references: [id])
+  visitorPassId String
+  visitorPass   VisitorPass   @relation(fields: [visitorPassId], references: [id])
+  unitId        String?
+  unit          Unit?         @relation(fields: [unitId], references: [id])
+  action        GateLogAction
+  guardId       String?
+  guard         User?         @relation(fields: [guardId], references: [id])
+  notes         String?
+  createdAt     DateTime      @default(now())
+
+  @@index([societyId, createdAt])
+  @@index([visitorPassId])
+}
+
+model Poll {
+  id                String             @id @default(uuid())
+  societyId         String
+  society           Society            @relation(fields: [societyId], references: [id])
+  title             String
+  description       String?
+  options           Json               // Array of { label: string, description?: string }
+  createdBy         String
+  noticeId          String?
+  startsAt          DateTime
+  endsAt            DateTime
+  resultsVisibility ResultsVisibility  @default(AFTER_CLOSE)
+  status            PollStatus         @default(DRAFT)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  deletedAt         DateTime?
+
+  votes Vote[]
+
+  @@index([societyId])
+  @@index([societyId, status])
+}
+
+model Vote {
+  id        String   @id @default(uuid())
+  societyId String
+  society   Society  @relation(fields: [societyId], references: [id])
+  pollId    String
+  poll      Poll     @relation(fields: [pollId], references: [id])
+  unitId    String
+  unit      Unit     @relation(fields: [unitId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  optionIndex Int    // Index into the poll's options array
+  votedAt   DateTime @default(now())
+
+  @@unique([pollId, unitId]) // One vote per unit per poll
+  @@index([pollId])
+  @@index([pollId, unitId])
+  @@index([societyId])
+}
+
+model DocumentFolder {
+  id        String   @id @default(uuid())
+  societyId String
+  society   Society  @relation(fields: [societyId], references: [id])
+  name      String
+  parentId  String?
+  parent    DocumentFolder? @relation("FolderHierarchy", fields: [parentId], references: [id])
+  children  DocumentFolder[] @relation("FolderHierarchy")
+  documents Document[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@index([societyId])
+}
+
+model Document {
+  id          String   @id @default(uuid())
+  societyId   String
+  society     Society  @relation(fields: [societyId], references: [id])
+  folderId    String?
+  folder      DocumentFolder? @relation(fields: [folderId], references: [id])
+  name        String
+  description String?
+  fileUrl     String
+  fileSize    Int
+  mimeType    String
+  uploadedBy  String
+  uploader    User     @relation(fields: [uploadedBy], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@index([societyId])
+  @@index([folderId])
+}
+
+enum TicketStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model Society {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  timezone  String   @default("UTC")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  buildings    Building[]
+  units        Unit[]
+  memberships  Membership[]
+  notices      Notice[]
+  tickets      Ticket[]
+  invoices     Invoice[]
+  payments     Payment[]
+  amenities    Amenity[]
+  bookings     Booking[]
+  visitorPasses VisitorPass[]
+  gateLogs     GateLog[]
+  polls        Poll[]
+  votes        Vote[]
+  documentFolders DocumentFolder[]
+  documents       Document[]
+  auditLogs    AuditLog[]
+}
+
+model Building {
+  id        String   @id @default(uuid())
+  societyId String
+  society   Society  @relation(fields: [societyId], references: [id])
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  units Unit[]
+
+  @@index([societyId])
+}
+
+model Unit {
+  id         String    @id @default(uuid())
+  societyId  String
+  society    Society   @relation(fields: [societyId], references: [id])
+  buildingId String
+  building   Building  @relation(fields: [buildingId], references: [id])
+  unitNumber String
+  floor      Int
+  type       UnitType
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime? // Soft delete support
+
+  memberships  Membership[]
+  tickets      Ticket[]
+  invoices     Invoice[]
+  bookings     Booking[]
+  visitorPasses VisitorPass[]
+  gateLogs      GateLog[]
+  votes         Vote[]
+
+  @@index([societyId])
+  @@index([buildingId])
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships  Membership[]
+  notices      Notice[]
+  readReceipts NoticeReadReceipt[]
+  tickets      Ticket[]
+  ticketComments TicketComment[]
+  bookings      Booking[]
+  visitorPasses VisitorPass[]
+  gateLogs      GateLog[]
+  votes         Vote[]
+  documents     Document[]
+}
+
+model Amenity {
+  id          String   @id @default(uuid())
+  societyId   String
+  society     Society  @relation(fields: [societyId], references: [id])
+  name        String
+  description String?
+  maxDuration Int      @default(120)    // Max booking duration in minutes
+  advanceNotice Int    @default(24)     // Hours of advance notice required
+  maxPerUnit  Int      @default(2)      // Max bookings per unit per day
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  bookings    Booking[]
+
+  @@index([societyId])
+}
+
+model Booking {
+  id         String        @id @default(uuid())
+  societyId  String
+  society    Society       @relation(fields: [societyId], references: [id])
+  amenityId  String
+  amenity    Amenity       @relation(fields: [amenityId], references: [id])
+  unitId     String
+  unit       Unit          @relation(fields: [unitId], references: [id])
+  residentId String
+  resident   User          @relation(fields: [residentId], references: [id])
+  startTime  DateTime
+  endTime    DateTime
+  status     BookingStatus @default(CONFIRMED)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([societyId, amenityId, startTime])
+  @@index([societyId, unitId])
+  @@index([amenityId, startTime, status])
+}
+
+model Membership {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id])
+  societyId String
+  society   Society          @relation(fields: [societyId], references: [id])
+  unitId    String?
+  unit      Unit?            @relation(fields: [unitId], references: [id])
+  role      Role
+  status    MembershipStatus @default(ACTIVE)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  deletedAt DateTime? // Soft delete support
+
+  @@index([societyId])
+  @@index([userId])
+  @@index([unitId])
+}
+
+model Invoice {
+  id            String        @id @default(uuid())
+  societyId     String
+  society       Society       @relation(fields: [societyId], references: [id])
+  unitId        String
+  unit          Unit          @relation(fields: [unitId], references: [id])
+  invoiceNumber String        @unique
+  title         String
+  description   String?
+  amount        Int           // Amount in cents (avoid floating point)
+  dueDate       DateTime
+  status        InvoiceStatus @default(ISSUED)
+  periodStart   DateTime?
+  periodEnd     DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  deletedAt     DateTime?
+
+  payments Payment[]
+
+  @@index([societyId, status])
+  @@index([societyId, unitId])
+  @@index([unitId])
+}
+
+model Payment {
+  id            String   @id @default(uuid())
+  invoiceId     String
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id])
+  societyId     String
+  society       Society  @relation(fields: [societyId], references: [id])
+  amount        Int
+  currency      String   @default("usd")
+  stripePaymentIntentId String? @unique
+  stripeSessionId       String?
+  status        String   @default("pending") // pending, succeeded, failed, refunded
+  paidAt        DateTime?
+  createdAt     DateTime @default(now())
+
+  @@index([invoiceId])
+  @@index([societyId, createdAt])
+}
+
+model Notice {
+  id          String    @id @default(uuid())
+  societyId   String
+  society     Society   @relation(fields: [societyId], references: [id])
+  authorId    String
+  author      User      @relation(fields: [authorId], references: [id])
+  title       String
+  content     String
+  category    String    @default("general")
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  readReceipts NoticeReadReceipt[]
+
+  @@index([societyId, publishedAt])
+  @@index([societyId, createdAt])
+}
+
+model Ticket {
+  id          String       @id @default(uuid())
+  societyId   String
+  society     Society      @relation(fields: [societyId], references: [id])
+  unitId      String?
+  unit        Unit?        @relation(fields: [unitId], references: [id])
+  residentId  String
+  resident    User         @relation(fields: [residentId], references: [id])
+  title       String
+  description String
+  category    String       @default("other")
+  status      TicketStatus @default(OPEN)
+  assignedTo  String?       // Vendor name/contact placeholder
+  photosUrl   String?       // Comma-separated URLs or JSON — Cloudinary integration deferred
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
+
+  comments TicketComment[]
+
+  @@index([societyId, status])
+  @@index([societyId, createdAt])
+  @@index([residentId])
+}
+
+model TicketComment {
+  id        String   @id @default(uuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id])
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([ticketId, createdAt])
+}
+
+model NoticeReadReceipt {
+  id       String   @id @default(uuid())
+  noticeId String
+  notice   Notice   @relation(fields: [noticeId], references: [id])
+  userId   String
+  user     User     @relation(fields: [userId], references: [id])
+  readAt   DateTime @default(now())
+
+  @@unique([noticeId, userId])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  societyId   String
+  society     Society  @relation(fields: [societyId], references: [id])
+  actorUserId String? // Nullable for system actions or initial onboarding
+  action      String
+  entityType  String
+  entityId    String
+  beforeJson  Json?
+  afterJson   Json?
+  createdAt   DateTime @default(now())
+
+  // Indexing baseline (Section 9 of PLAN.md): high traffic tables index by societyId and createdAt
+  @@index([societyId, createdAt])
+}

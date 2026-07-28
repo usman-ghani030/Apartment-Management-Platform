@@ -1,0 +1,20 @@
+{
+  "name": "apartment-management",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w frontend\" \"npm run dev -w backend\"",
+    "build": "npm run build -w frontend -w backend -w shared",
+    "test": "npm run test -w backend -w shared",
+    "lint": "npm run lint -w frontend -w backend -w shared",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "prettier": "^3.2.5"
+  }
+}

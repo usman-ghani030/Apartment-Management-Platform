@@ -1,0 +1,70 @@
+import { prisma } from './prisma';
+import { logAudit } from './audit';
+
+type NotificationEvent =
+  | { type: 'NOTICE_PUBLISHED'; noticeId: string; title: string; societyId: string }
+  | { type: 'TICKET_CREATED'; ticketId: string; title: string; societyId: string; residentId: string }
+  | { type: 'TICKET_STATUS_CHANGED'; ticketId: string; title: string; societyId: string; oldStatus: string; newStatus: string }
+  | { type: 'TICKET_COMMENT_ADDED'; ticketId: string; societyId: string; authorId: string };
+
+/**
+ * Send a notification. In Phase 1, this logs to the audit trail and console.
+ * Future phases will wire up email (Resend/Postmark) and/or push notifications.
+ *
+ * To integrate a real provider later:
+ * 1. Add the provider SDK (e.g., @resend/node)
+ * 2. Add an email sending function here
+ * 3. Call it alongside the audit log
+ */
+export async function sendNotification(event: NotificationEvent): Promise<void> {
+  // Stub: log to console in development
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`[NOTIFICATION] ${event.type}`, JSON.stringify(event));
+  }
+
+  // Log significant events to audit trail
+  switch (event.type) {
+    case 'NOTICE_PUBLISHED':
+      await logAudit({
+        societyId: event.societyId,
+        actorUserId: null, // System-generated notification
+        action: 'NOTIFICATION_NOTICE_PUBLISHED',
+        entityType: 'notice',
+        entityId: event.noticeId,
+        after: { title: event.title },
+      });
+      break;
+
+    case 'TICKET_CREATED':
+      await logAudit({
+        societyId: event.societyId,
+        actorUserId: null,
+        action: 'NOTIFICATION_TICKET_CREATED',
+        entityType: 'ticket',
+        entityId: event.ticketId,
+        after: { title: event.title },
+      });
+      break;
+
+    case 'TICKET_STATUS_CHANGED':
+      await logAudit({
+        societyId: event.societyId,
+        actorUserId: null,
+        action: 'NOTIFICATION_TICKET_STATUS_CHANGED',
+        entityType: 'ticket',
+        entityId: event.ticketId,
+        after: { title: event.title, oldStatus: event.oldStatus, newStatus: event.newStatus },
+      });
+      break;
+
+    case 'TICKET_COMMENT_ADDED':
+      await logAudit({
+        societyId: event.societyId,
+        actorUserId: null,
+        action: 'NOTIFICATION_TICKET_COMMENT_ADDED',
+        entityType: 'ticket',
+        entityId: event.ticketId,
+      });
+      break;
+  }
+}
