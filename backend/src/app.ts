@@ -11,7 +11,8 @@ dotenv.config();
 const app = express();
 
 // ── Global Middleware ──────────────────────────────────────────────────────
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true }));
+// Echo back the request origin for CORS (production-safe behind Railway's network)
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
 
