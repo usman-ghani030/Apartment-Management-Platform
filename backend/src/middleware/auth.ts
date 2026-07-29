@@ -166,8 +166,9 @@ export async function loadMembership(
         status: membership.status as import('@apartment/shared').MembershipStatus,
       };
     }
-  } catch {
-    // Silently continue without membership
+  } catch (err) {
+    console.error('[loadMembership] Failed to load membership:', err instanceof Error ? err.stack || err.message : err);
+    // Silently continue without membership — the route will check req.membership
   }
   next();
 }

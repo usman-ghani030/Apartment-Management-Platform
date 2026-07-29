@@ -41,7 +41,12 @@ export function errorHandler(
     }
   }
 
-  // Unexpected errors — log and return generic 500
-  console.error('Unhandled error:', err);
-  sendError(res, new AppError(ErrorCodes.INTERNAL_ERROR, 500, 'An unexpected error occurred'));
+  // Unexpected errors — log full details and return generic 500
+  const errorId = Math.random().toString(36).substring(2, 10);
+  console.error(`[UnhandledError:${errorId}]`, err instanceof Error ? err.stack || err.message : err);
+  sendError(
+    res,
+    new AppError(ErrorCodes.INTERNAL_ERROR, 500, `An unexpected error occurred (ref: ${errorId})`)
+  );
+
 }
