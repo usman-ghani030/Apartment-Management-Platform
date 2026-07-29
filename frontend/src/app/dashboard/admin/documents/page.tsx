@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, Folder, File, Upload, Download, Trash2, X } from 'lucide-react';
-import { ApiError, apiGet, apiPost, apiDelete } from '@/lib/api';
+import { ApiError, apiGet, apiPost, apiDelete, apiUpload } from '@/lib/api';
 import type { DocumentFolderResponse, DocumentResponse } from '@apartment/shared';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
@@ -71,13 +71,7 @@ export default function AdminDocumentsPage() {
       if (uploadDescription) formData.append('description', uploadDescription);
       if (selectedFolder) formData.append('folderId', selectedFolder);
 
-      const res = await fetch(`${API_BASE}/api/v1/documents/upload`, {
-        method: 'POST',
-        credentials: 'include',
-        body: formData,
-      });
-      const json = await res.json();
-      if (json.error) throw new ApiError(json.error.code, json.error.message, res.status);
+      await apiUpload('/api/v1/documents/upload', formData);
 
       setUploadName(''); setUploadDescription(''); setUploadFile(null); setShowUpload(false);
       setSuccess('File uploaded!');
