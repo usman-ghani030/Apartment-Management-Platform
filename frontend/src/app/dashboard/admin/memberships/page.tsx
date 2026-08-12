@@ -134,11 +134,11 @@ export default function AdminMembershipsPage() {
             <p>{success}</p>
             {tempPassword && (
               <div className="mt-3 bg-green-500/20 rounded-lg p-3 flex items-center gap-2">
-                <span className="text-xs text-green-300">Temporary Password:</span>
-                <code className="text-sm font-mono bg-black/30 px-2 py-1 rounded text-green-200 select-all">{tempPassword}</code>
+                <span className="text-xs text-green-600">Temporary Password:</span>
+                <code className="text-sm font-mono bg-black/30 px-2 py-1 rounded text-green-600 select-all">{tempPassword}</code>
                 <button
                   onClick={() => { navigator.clipboard.writeText(tempPassword); }}
-                  className="ml-auto text-xs text-green-300 hover:text-green-200 underline"
+                  className="ml-auto text-xs text-green-600 hover:text-green-600 underline"
                 >
                   Copy
                 </button>

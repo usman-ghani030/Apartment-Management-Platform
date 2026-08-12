@@ -226,6 +226,7 @@ model Society {
   votes        Vote[]
   documentFolders DocumentFolder[]
   documents       Document[]
+  parcels      Parcel[]
   auditLogs    AuditLog[]
 }
 
@@ -263,6 +264,7 @@ model Unit {
   visitorPasses VisitorPass[]
   gateLogs      GateLog[]
   votes         Vote[]
+  parcels      Parcel[]
 
   @@index([societyId])
   @@index([buildingId])
@@ -286,6 +288,8 @@ model User {
   gateLogs      GateLog[]
   votes         Vote[]
   documents     Document[]
+  parcelsLoggedBy   Parcel[] @relation("ParcelLoggedBy")
+  parcelsCollected  Parcel[] @relation("ParcelCollectedBy")
 }
 
 model Amenity {
@@ -380,6 +384,10 @@ model Payment {
   society       Society  @relation(fields: [societyId], references: [id])
   amount        Int
   currency      String   @default("usd")
+  // Payment gateway fields (Safepay hosted checkout)
+  provider      String   @default("offline") // offline | safepay
+  providerSessionId String? @unique // Safepay tracker token
+  providerTxnRef    String? // Safepay transaction reference
   stripePaymentIntentId String? @unique
   stripeSessionId       String?
   status        String   @default("pending") // pending, succeeded, failed, refunded
@@ -456,6 +464,34 @@ model NoticeReadReceipt {
   readAt   DateTime @default(now())
 
   @@unique([noticeId, userId])
+}
+
+enum ParcelStatus {
+  ARRIVED
+  COLLECTED
+}
+
+model Parcel {
+  id              String       @id @default(uuid())
+  societyId       String
+  society         Society      @relation(fields: [societyId], references: [id])
+  unitId          String
+  unit            Unit         @relation(fields: [unitId], references: [id])
+  loggedByUserId  String
+  loggedByUser    User         @relation("ParcelLoggedBy", fields: [loggedByUserId], references: [id])
+  collectedByUserId String?
+  collectedByUser   User?      @relation("ParcelCollectedBy", fields: [collectedByUserId], references: [id])
+  description     String
+  photoUrl        String?
+  status          ParcelStatus @default(ARRIVED)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  deletedAt       DateTime?
+
+  @@index([societyId])
+  @@index([societyId, status])
+  @@index([unitId])
+  @@index([societyId, createdAt])
 }
 
 model AuditLog {

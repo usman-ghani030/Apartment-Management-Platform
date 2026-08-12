@@ -76,6 +76,47 @@
 - [x] Resident document viewer page — done 2026-07-20
 - [x] Dashboard navigation links updated — done 2026-07-20
 
+## Phase 7 — Engagement & Accountability (In Progress)
+
+### Slice: Safepay Online Dues Payments (hosted checkout) ✅
+
+- [x] `PaymentProvider` interface + `SafepayPaymentProvider` behind it (ADR 003) — no route code calls Safepay directly
+- [x] Hosted checkout flow: passport token → tracker creation (`POST /order/payments/v3/`) → redirect to `/embedded/` checkout URL
+- [x] `POST /api/v1/invoices/:id/pay` now creates a Safepay session (offline fallback kept when keys absent)
+- [x] `POST /api/v1/payments/webhook` — HMAC-SHA512 signature verified over raw body (`X-SFPY-SIGNATURE`), idempotent via tracker token, updates invoice + audit + PAYMENT_CONFIRMED notification
+- [x] `POST /api/v1/payments/:tracker/verify` + `POST /api/v1/invoices/:id/verify-payment` — server-side reconciliation fallback
+- [x] Payment schema: `provider`, `providerSessionId` (unique), `providerTxnRef` + migration `20260729000000_add_payment_provider_fields`
+- [x] Resident invoices page: success/cancelled banners after redirect + verify fallback + manual "Check payment status"
+- [x] Admin invoices page: payment history table with Safepay method + transaction reference (reconciliation view)
+- [x] `.env.example` updated: SAFEPAY_PUBLIC_KEY, SAFEPAY_PRIVATE_KEY, SAFEPAY_ENV, SAFEPAY_WEBHOOK_SECRET
+- [x] Full test suite: 69/69 passing (9 new: signature verify + webhook route + pay endpoint)
+
+**Notes:**
+- Webhook URL to register in Safepay dashboard: `https://<railway-host>/api/v1/payments/webhook`
+- `SAFEPAY_WEBHOOK_SECRET` must be added to Railway env (see manual test guide)
+- `verifyPayment` POSTs to the tracker action endpoint; webhook remains the source of truth
+
+---
+
+### Slice 1: Package/Parcel Tracking ✅
+
+- [x] Prisma schema: ParcelStatus enum + Parcel model with proper relation names, indexes, soft-delete
+- [x] Shared types (ParcelStatusValues, CreateParcelSchema, UpdateParcelSchema, ParcelResponse)
+- [x] Permissions updated (parcel resource: guards/admins create, residents view/collect)
+- [x] PARCEL_ARRIVED notification event added
+- [x] API routes: full CRUD at /api/v1/parcels (tenant-scoped, Zod validated, audit logged)
+- [x] Migration SQL created (20260728000002_add_parcel_tracking)
+- [x] Admin parcels management page (log arrival, mark collected, filter/search)
+- [x] Resident parcels view page (awaiting collection, mark collected, history)
+- [x] Admin sidebar: Packages link added
+- [x] Resident dashboard: Package quick action added
+- [x] Full test suite: 60/60 passing
+
+**Notes:**
+- Parcel photo upload via URL only (no multer upload handler yet — matches document storage pattern)
+- Guard page doesn't yet have dedicated parcel logging form (admin page covers this)
+- Migration needs to be applied on Railway via `prisma migrate deploy`
+
 ---
 
 ## Architectural Decisions Logged
@@ -92,6 +133,7 @@
 - Documents stored locally in `backend/uploads/` — Cloudinary integration still deferred
 - `multer` and `@types/multer` installed in backend
 - `qrcode.react` installed in frontend for QR code rendering
-- Stripe webhook endpoint still missing — payments work in offline mode
+- Safepay webhook endpoint live at `/api/v1/payments/webhook` — register it in the Safepay dashboard and add `SAFEPAY_WEBHOOK_SECRET` to Railway env
+- Payments fall back to offline mode only when Safepay keys are absent
 - Fixed: Invite endpoint now returns `tempPassword` so admin can share with invited residents
 - `ioredis` in package.json but not wired up (token blacklisting deferred)

@@ -6,6 +6,8 @@ import { sendSuccess } from '../lib/response';
 import { requireAuth, loadMembership } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { logAudit } from '../lib/audit';
+import { getPaymentProvider } from '../lib/payment-provider';
+import { recordSuccessfulPayment } from '../lib/payment-processing';
 import { CreateInvoiceSchema, UpdateInvoiceSchema, DisputeInvoiceSchema } from '@apartment/shared';
 import type { InvoiceResponse, PaymentResponse } from '@apartment/shared';
 
@@ -221,7 +223,8 @@ router.post('/:id/dispute', requireAuth, loadMembership, async (req, res, next) 
 });
 
 // ── POST /api/v1/invoices/:id/pay ──────────────────────────────────────────
-// Creates a Stripe checkout session — requires STRIPE_SECRET_KEY to be set
+// Creates a Safepay hosted-checkout session; falls back to offline mode when
+// no gateway keys are configured (dev/testing only).
 router.post('/:id/pay', requireAuth, loadMembership, async (req, res, next) => {
   try {
     const societyId = req.membership?.societyId;
@@ -241,9 +244,9 @@ router.post('/:id/pay', requireAuth, loadMembership, async (req, res, next) => {
     if (invoice.status === 'PAID') throw new AppError(ErrorCodes.CONFLICT, 409, 'Invoice is already paid');
     if (invoice.status === 'DISPUTED') throw new AppError(ErrorCodes.CONFLICT, 409, 'Cannot pay a disputed invoice');
 
-    const stripeKey = process.env.STRIPE_SECRET_KEY;
-    if (!stripeKey) {
-      // No Stripe configured — create an offline payment record (for dev/testing)
+    const provider = getPaymentProvider();
+    if (!provider.isConfigured()) {
+      // No payment gateway configured — create an offline payment record (for dev/testing)
       const payment = await prisma.payment.create({
         data: { invoiceId: invoice.id, societyId, amount: invoice.amount, status: 'succeeded', paidAt: new Date() },
       });
@@ -257,27 +260,90 @@ router.post('/:id/pay', requireAuth, loadMembership, async (req, res, next) => {
       return;
     }
 
-    // Stripe is configured — create a checkout session
-    const Stripe = require('stripe');
-    const stripe = new Stripe(stripeKey);
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [{
-        price_data: { currency: 'usd', product_data: { name: invoice.title }, unit_amount: invoice.amount },
-        quantity: 1,
-      }],
-      mode: 'payment',
-      success_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/resident/invoices?success=1`,
-      cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/resident/invoices?canceled=1`,
-      metadata: { invoiceId: invoice.id, societyId },
+    // Prevent double-charging: at most one active Safepay session per invoice.
+    const existingPending = await prisma.payment.findFirst({
+      where: { invoiceId: invoice.id, societyId, provider: 'safepay', status: 'pending' },
+    });
+    if (existingPending) {
+      throw new AppError(ErrorCodes.CONFLICT, 409, 'A payment for this invoice is already in progress. Wait for it to finish or contact support before trying again.');
+    }
+
+    // Payment gateway is configured — create a Safepay hosted-checkout session
+    const frontendBase = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const session = await provider.createCheckoutSession({
+      invoiceId: invoice.id,
+      title: invoice.title,
+      amount: invoice.amount,
+      redirectUrl: `${frontendBase}/dashboard/resident/invoices?success=1&invoice=${invoice.id}`,
+      cancelUrl: `${frontendBase}/dashboard/resident/invoices?canceled=1&invoice=${invoice.id}`,
     });
 
-    // Save the session ID
-    await prisma.payment.create({
-      data: { invoiceId: invoice.id, societyId, amount: invoice.amount, stripeSessionId: session.id, status: 'pending' },
-    });
+    // Save the Safepay tracker as the session reference (used for webhook matching + idempotency)
+    try {
+      await prisma.payment.create({
+        data: {
+          invoiceId: invoice.id, societyId, amount: invoice.amount, currency: 'PKR',
+          provider: 'safepay', providerSessionId: session.trackerToken, status: 'pending',
+        },
+      });
+    } catch (err) {
+      // The tracker already exists at Safepay; without a matching row the webhook
+      // cannot reconcile it. Log loudly so operations can resolve the orphan.
+      console.error(`[Safepay] Failed to persist payment row for invoice ${invoice.id}:`, err instanceof Error ? err.message : err);
+      throw new AppError(ErrorCodes.INTERNAL_ERROR, 500, 'Payment could not be started — please try again');
+    }
 
     sendSuccess(res, { url: session.url });
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/v1/invoices/:id/verify-payment ───────────────────────────────
+// Fallback reconciliation: checks the latest pending Safepay session for this
+// invoice directly with the gateway. The webhook remains the source of truth;
+// this only catches cases where the webhook hasn't landed yet (e.g. closed tab).
+router.post('/:id/verify-payment', requireAuth, loadMembership, async (req, res, next) => {
+  try {
+    const societyId = req.membership?.societyId;
+    if (!societyId) throw new AppError(ErrorCodes.MEMBERSHIP_REQUIRED, 403, 'Active membership required');
+
+    const invoice = await prisma.invoice.findFirst({ where: { id: req.params.id, societyId, deletedAt: null } });
+    if (!invoice) throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Invoice not found');
+
+    const isAdmin = req.membership!.role === 'COMMITTEE_ADMIN' || req.membership!.role === 'SUPER_ADMIN';
+    if (!isAdmin) {
+      const userUnitIds = await getUserUnitIds(req.user!.id, societyId);
+      if (!userUnitIds.includes(invoice.unitId)) {
+        throw new AppError(ErrorCodes.FORBIDDEN, 403, 'Access denied');
+      }
+    }
+
+    if (invoice.status === 'PAID') {
+      sendSuccess(res, { status: 'succeeded' });
+      return;
+    }
+
+    const pending = await prisma.payment.findFirst({
+      where: { invoiceId: invoice.id, societyId, provider: 'safepay', status: 'pending' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!pending || !pending.providerSessionId) {
+      sendSuccess(res, { status: 'none' });
+      return;
+    }
+
+    const status = await getPaymentProvider().verifyPayment(pending.providerSessionId);
+    if (status === 'succeeded') {
+      await recordSuccessfulPayment({
+        paymentId: pending.id,
+        invoiceId: invoice.id,
+        societyId,
+        amount: pending.amount,
+        txnRef: pending.providerSessionId,
+      });
+    } else if (status === 'failed') {
+      await prisma.payment.update({ where: { id: pending.id }, data: { status: 'failed' } });
+    }
+    sendSuccess(res, { status });
   } catch (err) { next(err); }
 });
 
@@ -310,6 +376,9 @@ router.get('/payments/history', requireAuth, loadMembership, async (req, res, ne
       id: p.id, invoiceId: p.invoiceId, invoiceNumber: p.invoice.invoiceNumber,
       invoiceTitle: p.invoice.title, amount: p.amount, currency: p.currency,
       status: p.status, paidAt: p.paidAt?.toISOString() ?? null, createdAt: p.createdAt.toISOString(),
+      provider: p.provider ?? 'offline',
+      providerSessionId: p.providerSessionId,
+      providerTxnRef: p.providerTxnRef,
     })));
   } catch (err) { next(err); }
 });

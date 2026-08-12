@@ -5,7 +5,9 @@ type NotificationEvent =
   | { type: 'NOTICE_PUBLISHED'; noticeId: string; title: string; societyId: string }
   | { type: 'TICKET_CREATED'; ticketId: string; title: string; societyId: string; residentId: string }
   | { type: 'TICKET_STATUS_CHANGED'; ticketId: string; title: string; societyId: string; oldStatus: string; newStatus: string }
-  | { type: 'TICKET_COMMENT_ADDED'; ticketId: string; societyId: string; authorId: string };
+  | { type: 'TICKET_COMMENT_ADDED'; ticketId: string; societyId: string; authorId: string }
+  | { type: 'PARCEL_ARRIVED'; parcelId: string; societyId: string; unitId: string; description: string }
+  | { type: 'PAYMENT_CONFIRMED'; invoiceId: string; societyId: string; amount: number; txnRef: string | null };
 
 /**
  * Send a notification. In Phase 1, this logs to the audit trail and console.
@@ -64,6 +66,28 @@ export async function sendNotification(event: NotificationEvent): Promise<void> 
         action: 'NOTIFICATION_TICKET_COMMENT_ADDED',
         entityType: 'ticket',
         entityId: event.ticketId,
+      });
+      break;
+
+    case 'PARCEL_ARRIVED':
+      await logAudit({
+        societyId: event.societyId,
+        actorUserId: null,
+        action: 'NOTIFICATION_PARCEL_ARRIVED',
+        entityType: 'parcel',
+        entityId: event.parcelId,
+        after: { description: event.description, unitId: event.unitId },
+      });
+      break;
+
+    case 'PAYMENT_CONFIRMED':
+      await logAudit({
+        societyId: event.societyId,
+        actorUserId: null,
+        action: 'NOTIFICATION_PAYMENT_CONFIRMED',
+        entityType: 'invoice',
+        entityId: event.invoiceId,
+        after: { amount: event.amount, txnRef: event.txnRef },
       });
       break;
   }

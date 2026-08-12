@@ -101,6 +101,8 @@ module.exports = {
         'scale-in': 'scaleIn 0.2s ease-out',
         'slide-down': 'slideDown 0.3s ease-out',
         'pulse-soft': 'pulseSoft 2s ease-in-out infinite',
+        'float': 'float 5s ease-in-out infinite',
+        'float-delayed': 'float 5s ease-in-out 1.5s infinite',
       },
       keyframes: {
         fadeIn: {
@@ -122,6 +124,10 @@ module.exports = {
         pulseSoft: {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.7' },
+        },
+        float: {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-8px)' },
         },
       },
     },

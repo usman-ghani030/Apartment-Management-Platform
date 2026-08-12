@@ -1,10 +1,16 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, DollarSign, CreditCard, AlertCircle, CheckCircle, Clock, XCircle, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, DollarSign, CreditCard, AlertCircle, CheckCircle, Clock, XCircle, ShieldAlert, RefreshCw } from 'lucide-react';
 import { ApiError, apiGet, apiPost } from '@/lib/api';
 import type { InvoiceResponse } from '@apartment/shared';
+
+type Banner =
+  | { kind: 'success'; text: string; invoiceId: string | null }
+  | { kind: 'canceled'; text: string; invoiceId: string | null }
+  | { kind: 'checking'; text: string; invoiceId: string | null }
+  | null;
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: 'bg-gray-500/10 text-gray-700',
@@ -22,6 +28,8 @@ export default function ResidentInvoicesPage() {
   const [error, setError] = useState('');
   const [disputeReason, setDisputeReason] = useState('');
   const [disputingId, setDisputingId] = useState<string | null>(null);
+  const [banner, setBanner] = useState<Banner>(null);
+  const verifiedInvoice = useRef<string | null>(null);
 
   const fetchInvoices = useCallback(async () => {
     try {
@@ -32,14 +40,57 @@ export default function ResidentInvoicesPage() {
     } finally { setLoading(false); }
   }, [router]);
 
+  // Reconcile after returning from the Safepay hosted checkout: the webhook is
+  // the source of truth, so we ask the gateway directly before trusting the redirect.
+  const verifyPayment = useCallback(async (invoiceId: string) => {
+    try {
+      const result = await apiPost<{ status: string }>(`/api/v1/invoices/${invoiceId}/verify-payment`);
+      if (result.status === 'succeeded') {
+        setBanner({ kind: 'success', text: 'Payment received — thank you! Your invoice is now marked as paid.', invoiceId });
+      } else if (result.status === 'failed') {
+        setBanner({ kind: 'canceled', text: 'Your payment was not completed. No charge was made — you can try again.', invoiceId });
+      } else {
+        setBanner({ kind: 'checking', text: 'We are confirming your payment with the bank. This can take a few seconds — check again shortly.', invoiceId });
+      }
+      fetchInvoices();
+    } catch {
+      // Verification failed — keep the pending banner so the user can retry manually.
+      setBanner({ kind: 'checking', text: 'We could not confirm the payment yet. Use “Check payment status” below to retry.', invoiceId });
+    }
+  }, [fetchInvoices]);
+
   useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
+
+  // Read redirect query params (?success=1 / ?canceled=1 &invoice=<id>) once.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const invoiceId = params.get('invoice');
+    if (params.get('success') === '1') {
+      setBanner({ kind: 'success', text: 'Payment completed! Your invoice is being updated…', invoiceId });
+      // Clean the URL so refresh doesn't replay the banner.
+      window.history.replaceState({}, '', window.location.pathname);
+      if (invoiceId && verifiedInvoice.current !== invoiceId) {
+        verifiedInvoice.current = invoiceId;
+        const t = setTimeout(() => verifyPayment(invoiceId), 2500);
+        return () => clearTimeout(t);
+      }
+      if (!invoiceId) {
+        // No invoice reference in the redirect — just refresh the list shortly.
+        const t = setTimeout(() => fetchInvoices(), 2500);
+        return () => clearTimeout(t);
+      }
+    } else if (params.get('canceled') === '1') {
+      setBanner({ kind: 'canceled', text: 'Payment was canceled. You can try again whenever you are ready.', invoiceId });
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [verifyPayment, fetchInvoices]);
 
   const handlePay = async (id: string) => {
     try {
       setError('');
       const result = await apiPost<{ url?: string; message?: string }>(`/api/v1/invoices/${id}/pay`);
       if (result.url) {
-        window.location.href = result.url; // Redirect to Stripe
+        window.location.href = result.url; // Redirect to the payment gateway
       } else {
         // Offline mode — just refresh
         fetchInvoices();
@@ -86,6 +137,27 @@ export default function ResidentInvoicesPage() {
             </div>
           </div>
         </div>
+
+        {banner && (
+          <div className={`flex items-start gap-3 border rounded-xl px-4 py-3 mb-6 text-sm ${
+            banner.kind === 'success' ? 'bg-green-500/10 border-green-500/25 text-green-700'
+            : banner.kind === 'canceled' ? 'bg-amber-500/10 border-amber-500/25 text-amber-700'
+            : 'bg-blue-500/10 border-blue-500/25 text-blue-700'
+          }`}>
+            {banner.kind === 'success' ? <CheckCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              : banner.kind === 'canceled' ? <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              : <Clock className="w-4 h-4 mt-0.5 flex-shrink-0" />}
+            <div className="flex-1">{banner.text}</div>
+            {banner.kind === 'checking' && banner.invoiceId && (
+              <button
+                onClick={() => verifyPayment(banner.invoiceId!)}
+                className="flex items-center gap-1 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-3 py-1.5 transition-all"
+              >
+                <RefreshCw className="w-3 h-3" /> Check payment status
+              </button>
+            )}
+          </div>
+        )}
 
         {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
 

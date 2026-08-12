@@ -283,6 +283,9 @@ export interface PaymentResponse {
   status: string;
   paidAt: string | null;
   createdAt: string;
+  provider?: string;
+  providerSessionId?: string | null;
+  providerTxnRef?: string | null;
 }
 
 // ── Visitor / Gate Log Types ──────────────────────────────────────────────────
@@ -473,6 +476,40 @@ export interface AuditLogResponse {
   beforeJson: Record<string, unknown> | null;
   afterJson: Record<string, unknown> | null;
   createdAt: string;
+}
+
+// ── Parcel Types ──────────────────────────────────────────────────────────────────
+export const ParcelStatusValues = ['ARRIVED', 'COLLECTED'] as const;
+export type ParcelStatus = (typeof ParcelStatusValues)[number];
+
+export const CreateParcelSchema = z.object({
+  unitId: z.string().uuid(),
+  description: z.string().min(1, 'Description is required').max(500),
+  photoUrl: z.string().optional().nullable(),
+});
+export type CreateParcelInput = z.infer<typeof CreateParcelSchema>;
+
+export const UpdateParcelSchema = z.object({
+  status: z.enum(ParcelStatusValues).optional(),
+  description: z.string().min(1).max(500).optional(),
+  photoUrl: z.string().optional().nullable(),
+});
+export type UpdateParcelInput = z.infer<typeof UpdateParcelSchema>;
+
+export interface ParcelResponse {
+  id: string;
+  societyId: string;
+  unitId: string;
+  unitNumber: string;
+  loggedByUserId: string;
+  loggedByUserName: string;
+  collectedByUserId: string | null;
+  collectedByUserName: string | null;
+  description: string;
+  photoUrl: string | null;
+  status: ParcelStatus;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ── Legacy ──────────────────────────────────────────────────────────────────

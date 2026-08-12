@@ -23,7 +23,7 @@ A multi-tenant SaaS platform that replaces WhatsApp, paper logs, and spreadsheet
 | File Storage | Cloudinary or AWS S3 (decide at Phase 0, see open questions) |
 | AI Service | Python + FastAPI (separate service, added Phase 7+) |
 | AI SDK | Vercel AI SDK / OpenAI Agents SDK |
-| Payments | Stripe |
+| Payments | Safepay |
 | Deployment (later, NOT now) | Vercel (frontend) + Railway (backend) for MVP, migrate to AWS later |
 
 **Do not set up deployment infrastructure until explicitly instructed.** Development happens locally / in dev environments until the whole phased build is complete.
@@ -114,7 +114,7 @@ Applies to every Express route from Phase 0 onward — agents should follow thes
 ## 8. Local Development Setup (Phase 0 deliverable)
 
 - `docker-compose.yml` at repo root running Postgres + Redis for local dev.
-- `.env.example` in `backend/` and `frontend/` listing every required variable (DB URL, Redis URL, JWT secret, Stripe keys placeholder, storage provider keys) — kept in sync as phases add new env vars. No feature ships without updating this file.
+- `.env.example` in `backend/` and `frontend/` listing every required variable (DB URL, Redis URL, JWT secret, Safepay keys placeholder, storage provider keys) — kept in sync as phases add new env vars. No feature ships without updating this file.
 - Root `package.json` scripts (run from repo root via npm workspaces, e.g. `npm run dev --workspace=backend`) plus convenience root scripts:
   - `npm run dev` — runs frontend + backend concurrently (e.g. via `concurrently` or `npm-run-all`)
   - `npm run db:migrate` — runs Prisma migration (delegates to `backend`)
@@ -206,7 +206,7 @@ Permission checks are role + society + (sometimes) unit scoped. Build a single `
 ### Phase 2 — Money
 
 - [ ] Dues/invoice generation per unit (manual or recurring rule-based)
-- [ ] Stripe integration: online payment collection
+- [ ] Safepay integration: online payment collection, implemented behind a PaymentProvider interface (see ADR 003)
 - [ ] Webhook handling + reconciliation (payment → invoice status update)
 - [ ] Payment history per unit, visible to resident and admin
 - [ ] Basic dispute/flag mechanism (resident flags a charge, admin resolves)
@@ -238,7 +238,18 @@ Permission checks are role + society + (sometimes) unit scoped. Build a single `
 - [ ] Audit trail UI (searchable/filterable view over `AuditLog`, built on infra from Phase 0)
 - [ ] Committee transition flow (export/handover of records)
 
-### Phase 7 — AI Layer
+### Phase 7 — Engagement & Accountability
+
+Deliberately sequenced ahead of the AI layer since these solve daily friction with infrastructure already in place (BullMQ/Redis jobs, existing Ticket/Membership models) rather than requiring new architecture.
+
+- [ ] **Package/Parcel Tracking**: `Parcel` entity (societyId, unitId, loggedByUserId — usually a guard, description/photo, status: Arrived → Collected, collectedByUserId, timestamps). Reuses visitor-pass infrastructure patterns from Phase 4. Resident gets notified on arrival; guard/admin marks collected.
+- [ ] **Automated Dues Reminders**: scheduled BullMQ job (not just post-overdue as currently exists from Phase 2) that checks upcoming due dates and sends a reminder notification a configurable number of days before the due date, per society settings.
+- [ ] **Vendor Ratings**: 1-5 star rating + optional comment, captured when a Maintenance Ticket transitions to Closed. Aggregated vendor rating visible to admins when assigning future tickets — directly addresses the "vendors overcharging/underdelivering" problem from the original problem statement.
+- [ ] **Admin Analytics Dashboard**: a dedicated view (not just the homepage stat tiles) showing dues collection rate over time, average ticket resolution time, ticket volume by category, and vendor performance — built as read/aggregate queries over existing data, no new core entities required.
+
+**Explicitly deferred to the end of this phase, not skipped**: full Safepay payment gateway completion and email verification on signup. Both are functionally important but were intentionally pushed to the very end of Phase 7's work due to the testing overhead they add (webhook testing, email delivery testing) — build and validate the four features above first, then close out Safepay integration and email verification as the last two slices of this phase before moving to Phase 8.
+
+### Phase 8 — AI Layer
 
 - [ ] Stand up `ai-service` (Python + FastAPI)
 - [ ] pgvector enabled on relevant tables (e.g. tickets, documents) for semantic search
@@ -286,3 +297,5 @@ Permission checks are role + society + (sometimes) unit scoped. Build a single `
 | 2026-07-19 | Added Redis usage, API conventions, soft-delete policy, local dev setup, and indexing baseline (self-review pass) |
 | 2026-07-19 | Resolved auth (custom JWT) and storage (Cloudinary) decisions; added ADR 001 and 002 |
 | 2026-07-19 | Simplified project structure: dropped Turborepo for plain npm workspaces (`frontend`, `backend`, `shared`) instead of `apps/`+`packages/` layout |
+| 2026-07-19 | Inserted new Phase 7 — Engagement & Accountability (parcel tracking, dues reminders, vendor ratings, admin analytics); AI Layer renumbered to Phase 8; payment gateway completion and email verification explicitly deferred to end of Phase 7 |
+| 2026-07-19 | Switched payment provider from Stripe to Safepay; added ADR 003 and PaymentProvider abstraction requirement |

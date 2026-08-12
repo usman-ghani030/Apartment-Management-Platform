@@ -41,9 +41,9 @@ export default function LoginPage() {
         <div className="absolute bottom-[-10%] right-[-5%] w-[60%] h-[60%] bg-accent-800/[0.02] rounded-full blur-[120px]" />
       </div>
 
-      {/* Logo */}
+      {/* Logo — matches home page header */}
       <a href="/" className="absolute top-8 left-8 flex items-center gap-2.5 group z-10">
-        <div className="bg-accent-600 p-2 rounded-lg text-white shadow-sm group-hover:scale-105 transition-transform">
+        <div className="bg-gradient-to-br from-accent-500 to-accent-800 p-2 rounded-xl text-white shadow-sm ring-1 ring-accent-700/20 group-hover:scale-105 group-hover:shadow-md transition-all">
           <Building2 className="w-5 h-5" />
         </div>
         <span className="text-title-sm font-display text-gray-900">

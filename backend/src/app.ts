@@ -13,7 +13,13 @@ const app = express();
 // ── Global Middleware ──────────────────────────────────────────────────────
 // Echo back the request origin for CORS (production-safe behind Railway's network)
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json());
+// Capture the raw request body so webhook handlers can verify signatures over
+// the exact bytes received (Safepay signs the raw body).
+app.use(express.json({
+  verify: (req: express.Request, _res, buf: Buffer) => {
+    (req as express.Request & { rawBody?: string }).rawBody = buf.toString('utf8');
+  },
+}));
 app.use(cookieParser());
 
 // ── Health Check ──────────────────────────────────────────────────────────
@@ -71,6 +77,14 @@ app.use('/api/v1/polls', pollRoutes);
 // ── Document Routes ───────────────────────────────────────────────────────
 import documentRoutes from './routes/documents';
 app.use('/api/v1/documents', documentRoutes);
+
+// ── Parcel Routes ─────────────────────────────────────────────────────────
+import parcelRoutes from './routes/parcels';
+app.use('/api/v1/parcels', parcelRoutes);
+
+// ── Payment Routes (Safepay webhook + verification) ────────────────────────
+import paymentRoutes from './routes/payments';
+app.use('/api/v1/payments', paymentRoutes);
 
 // ── Audit Log Routes ──────────────────────────────────────────────────────
 import auditLogRoutes from './routes/audit-log';

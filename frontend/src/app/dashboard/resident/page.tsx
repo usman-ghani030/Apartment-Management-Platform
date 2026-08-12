@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   Bell, LogOut, Home, FileText, Wrench, CreditCard, CalendarRange,
   QrCode, BarChart3, Folder, Ticket, Clock, AlertTriangle, ChevronRight,
-  User, ArrowUpRight,
+  User, ArrowUpRight, Package,
 } from 'lucide-react';
 import { auth, ApiError, apiGet } from '@/lib/api';
 import type { AuthResponse } from '@apartment/shared';
@@ -289,6 +289,7 @@ export default function ResidentDashboard() {
             <QuickActionBtn icon={FileText} label="Notices" onClick={() => router.push('/dashboard/resident/notices')} badge={dashboard.unreadNotices} />
             <QuickActionBtn icon={BarChart3} label="Vote" onClick={() => router.push('/dashboard/resident/polls')} badge={dashboard.activePolls} />
             <QuickActionBtn icon={Folder} label="Documents" onClick={() => router.push('/dashboard/resident/documents')} />
+            <QuickActionBtn icon={Package} label="Packages" onClick={() => router.push('/dashboard/resident/parcels')} />
           </div>
         </section>
 

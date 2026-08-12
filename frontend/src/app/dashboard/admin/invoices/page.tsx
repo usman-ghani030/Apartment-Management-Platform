@@ -2,9 +2,24 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, CreditCard, DollarSign } from 'lucide-react';
+import { ArrowLeft, Plus, CreditCard, DollarSign, Receipt } from 'lucide-react';
 import { ApiError, apiGet, apiPost, apiPatch } from '@/lib/api';
 import type { InvoiceResponse } from '@apartment/shared';
+
+interface PaymentHistoryItem {
+  id: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  invoiceTitle: string;
+  amount: number;
+  currency: string;
+  status: string;
+  paidAt: string | null;
+  createdAt: string;
+  provider?: string;
+  providerSessionId?: string | null;
+  providerTxnRef?: string | null;
+}
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: 'bg-gray-500/10 text-gray-700',
@@ -29,6 +44,19 @@ export default function AdminInvoicesPage() {
   const [units, setUnits] = useState<{ id: string; unitNumber: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [payments, setPayments] = useState<PaymentHistoryItem[]>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(true);
+
+  const fetchPayments = useCallback(async () => {
+    try {
+      const data = await apiGet<PaymentHistoryItem[]>('/api/v1/invoices/payments/history');
+      setPayments(data || []);
+    } catch {
+      // Reconciliation view is best-effort — never block the main page on it.
+    } finally { setPaymentsLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchPayments(); }, [fetchPayments]);
 
   const fetchInvoices = useCallback(async () => {
     try {
@@ -152,6 +180,65 @@ export default function AdminInvoicesPage() {
             ))}
           </div>
         )}
+
+        {/* Payment history — reconciliation view (which invoices were paid via Safepay) */}
+        <div className="mt-10">
+          <div className="flex items-center gap-2 mb-4">
+            <Receipt className="w-5 h-5 text-accent-600" />
+            <h2 className="text-lg font-semibold text-gray-900">Payment history</h2>
+            <span className="text-xs text-gray-700">Reconcile online payments against invoices</span>
+          </div>
+          {paymentsLoading ? (
+            <div className="text-center py-8 text-gray-700 text-sm">Loading payments…</div>
+          ) : payments.length === 0 ? (
+            <div className="bg-white border border-gray-200 rounded-xl p-8 text-center">
+              <p className="text-gray-700">No payments recorded yet</p>
+              <p className="text-gray-700 text-sm mt-1">Payments appear here once residents pay their dues</p>
+            </div>
+          ) : (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 text-left text-xs text-gray-700">
+                      <th className="px-4 py-3 font-medium">Date</th>
+                      <th className="px-4 py-3 font-medium">Invoice</th>
+                      <th className="px-4 py-3 font-medium">Amount</th>
+                      <th className="px-4 py-3 font-medium">Method</th>
+                      <th className="px-4 py-3 font-medium">Reference</th>
+                      <th className="px-4 py-3 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.map((p) => (
+                      <tr key={p.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{new Date(p.createdAt).toLocaleDateString()}</td>
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-gray-900">{p.invoiceTitle}</div>
+                          <div className="text-xs text-gray-700 font-mono">{p.invoiceNumber}</div>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-gray-900">{(p.amount / 100).toFixed(2)} {p.currency}</td>
+                        <td className="px-4 py-3">
+                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${p.provider === 'safepay' ? 'bg-blue-500/10 text-blue-700' : 'bg-gray-500/10 text-gray-700'}`}>
+                            {p.provider === 'safepay' ? 'Safepay' : 'Offline'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-700 font-mono text-xs">{p.providerTxnRef || p.providerSessionId || '—'}</td>
+                        <td className="px-4 py-3">
+                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                            p.status === 'succeeded' ? 'bg-green-500/10 text-green-700'
+                            : p.status === 'failed' ? 'bg-red-500/10 text-red-700'
+                            : 'bg-amber-500/10 text-amber-700'
+                          }`}>{p.status}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );

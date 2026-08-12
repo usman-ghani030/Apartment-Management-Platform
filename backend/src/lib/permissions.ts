@@ -19,6 +19,7 @@ export type AuthResource =
   | 'gate_log'
   | 'poll'
   | 'document'
+  | 'parcel'
   | 'audit_log';
 
 /**
@@ -122,6 +123,12 @@ const PERMISSION_MATRIX: Record<AuthResource, Partial<Record<AuthAction, Role[]>
     create: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
     read: ['SUPER_ADMIN', 'COMMITTEE_ADMIN', 'RESIDENT'],
     update: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
+    delete: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
+  },
+  parcel: {
+    create: ['SUPER_ADMIN', 'COMMITTEE_ADMIN', 'SECURITY_GUARD'],
+    read: ['SUPER_ADMIN', 'COMMITTEE_ADMIN', 'RESIDENT', 'SECURITY_GUARD'],
+    update: ['SUPER_ADMIN', 'COMMITTEE_ADMIN', 'RESIDENT'],
     delete: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
   },
   audit_log: {
