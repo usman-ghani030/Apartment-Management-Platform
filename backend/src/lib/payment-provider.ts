@@ -11,7 +11,7 @@ export interface PaymentProvider {
   isConfigured(): boolean;
   /**
    * Create a hosted-checkout session for one invoice and return the redirect URL.
-   * Amounts are in the lowest denomination (cents/paise) — Safepay expects that too.
+   * Amounts are in the lowest denomination (paisa) — Safepay expects that too.
    */
   createCheckoutSession(params: {
     invoiceId: string;
@@ -81,6 +81,24 @@ function readConfig(): SafepayConfig | null {
   };
 }
 
+/**
+ * Extract a short, non-sensitive reason from a Safepay error body
+ * ({ status: { errors: [...] } }). Never logs raw request/response bodies
+ * that could contain card data.
+ */
+function safepayErrorDetail(json: any): string {
+  try {
+    const errors = json?.status?.errors;
+    if (Array.isArray(errors)) return JSON.stringify(errors).slice(0, 200);
+    if (typeof errors === 'string') return errors.slice(0, 200);
+    if (json && typeof json === 'object') {
+      const msg = json.message ?? json.error;
+      if (typeof msg === 'string') return msg.slice(0, 200);
+    }
+  } catch { /* never let logging break the flow */ }
+  return '(no error detail returned by Safepay)';
+}
+
 /** Tiny fetch wrapper with a timeout; returns parsed JSON and the HTTP status. */
 async function safepayFetch(url: string, body: unknown, secret: string): Promise<{ status: number; json: any }> {
   const controller = new AbortController();
@@ -130,6 +148,7 @@ class SafepayPaymentProvider implements PaymentProvider {
     // Step 1 — passport token (tbt)
     const tokenRes = await safepayFetch(`${apiBase}/client/passport/v1/token`, {}, config.merchantSecret);
     if (tokenRes.status < 200 || tokenRes.status >= 300) {
+      console.error(`[Safepay] Token request failed (HTTP ${tokenRes.status}): ${safepayErrorDetail(tokenRes.json)}`);
       throw new PaymentProviderError(`Safepay token request failed (HTTP ${tokenRes.status})`);
     }
     const rawTbt = tokenRes.json?.data;
@@ -149,8 +168,8 @@ class SafepayPaymentProvider implements PaymentProvider {
       source: 'omnihome',
     }, config.merchantSecret);
     if (txRes.status !== 201 && txRes.status !== 200) {
-      // Log only the status and a truncated generic detail — never full payloads.
-      console.error(`[Safepay] Tracker creation failed (HTTP ${txRes.status}) for invoice ${params.invoiceId}`);
+      // Log the status and a truncated, non-sensitive Safepay error reason — never raw payloads.
+      console.error(`[Safepay] Tracker creation failed (HTTP ${txRes.status}) for invoice ${params.invoiceId}: ${safepayErrorDetail(txRes.json)}`);
       throw new PaymentProviderError(`Safepay could not start a checkout (HTTP ${txRes.status})`);
     }
     const trackerToken: string | undefined = txRes.json?.data?.tracker?.token;

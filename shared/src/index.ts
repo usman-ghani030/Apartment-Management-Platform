@@ -234,7 +234,7 @@ export const CreateInvoiceSchema = z.object({
   unitId: z.string().uuid(),
   title: z.string().min(1).max(200),
   description: z.string().optional(),
-  amount: z.number().int().positive('Amount must be positive (in cents)'),
+  amount: z.number().int().positive('Amount must be positive (in paisa — rupees × 100)'),
   dueDate: z.string().datetime(),
   periodStart: z.string().datetime().optional(),
   periodEnd: z.string().datetime().optional(),

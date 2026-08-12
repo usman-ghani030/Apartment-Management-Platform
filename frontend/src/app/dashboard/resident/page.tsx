@@ -3,15 +3,15 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Bell, LogOut, Home, FileText, Wrench, CreditCard, CalendarRange,
-  QrCode, BarChart3, Folder, Ticket, Clock, AlertTriangle, ChevronRight,
-  User, ArrowUpRight, Package,
+  FileText, Wrench, CreditCard, CalendarRange,
+  QrCode, BarChart3, Folder, Ticket, Clock, ChevronRight,
+  User, Package,
 } from 'lucide-react';
-import { auth, ApiError, apiGet } from '@/lib/api';
-import type { AuthResponse } from '@apartment/shared';
+import { ApiError, apiGet } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { useResidentShell } from '@/components/dashboard/resident-shell';
 
 // ── Types ─────────────────────────────────────────────────────────────
 interface DashboardData {
@@ -74,7 +74,7 @@ function timeAgo(dateStr: string): string {
 // ── Resident Dashboard ─────────────────────────────────────────────────
 export default function ResidentDashboard() {
   const router = useRouter();
-  const [data, setData] = useState<AuthResponse | null>(null);
+  const { user } = useResidentShell();
   const [loading, setLoading] = useState(true);
   const [dashboard, setDashboard] = useState<DashboardData>({
     unreadNotices: 0, openTickets: 0, pendingInvoices: { count: 0, overdue: false },
@@ -82,61 +82,50 @@ export default function ResidentDashboard() {
   });
 
   useEffect(() => {
-    auth.me()
-      .then(async (userData) => {
-        const isResident = userData.memberships.some((m) => m.role === 'RESIDENT');
-        if (!isResident) {
-          router.push('/dashboard/admin');
-          return;
-        }
-        setData(userData);
+    let cancelled = false;
+    (async () => {
+      try {
+        const [notices, tickets, invoices, visitors, polls] = await Promise.all([
+          apiGet<any[]>('/api/v1/notices').catch(() => []),
+          apiGet<any[]>('/api/v1/tickets').catch(() => []),
+          apiGet<any[]>('/api/v1/invoices').catch(() => []),
+          apiGet<any[]>('/api/v1/visitor-passes').catch(() => []),
+          apiGet<any[]>('/api/v1/polls').catch(() => []),
+        ]);
+        if (cancelled) return;
 
-        // Fetch dashboard data
-        try {
-          const [notices, tickets, invoices, visitors, polls] = await Promise.all([
-            apiGet<any[]>('/api/v1/notices').catch(() => []),
-            apiGet<any[]>('/api/v1/tickets').catch(() => []),
-            apiGet<any[]>('/api/v1/invoices').catch(() => []),
-            apiGet<any[]>('/api/v1/visitor-passes').catch(() => []),
-            apiGet<any[]>('/api/v1/polls').catch(() => []),
-          ]);
+        const unreadNotices = notices.filter((n: any) => !n.hasRead).length;
+        const openTickets = tickets.filter((t: any) =>
+          ['OPEN', 'ASSIGNED', 'IN_PROGRESS'].includes(t.status)
+        ).length;
+        const pendingInvoices = invoices.filter((i: any) => i.status === 'PENDING' || i.status === 'OVERDUE');
+        const pendingVisitors = visitors.filter((v: any) => v.status === 'PENDING').length;
+        const activePolls = polls.filter((p: any) => p.status === 'ACTIVE').length;
 
-          const unreadNotices = notices.filter((n: any) => !n.hasRead).length;
-          const openTickets = tickets.filter((t: any) =>
-            ['OPEN', 'ASSIGNED', 'IN_PROGRESS'].includes(t.status)
-          ).length;
-          const pendingInvoices = invoices.filter((i: any) => i.status === 'PENDING' || i.status === 'OVERDUE');
-          const pendingVisitors = visitors.filter((v: any) => v.status === 'PENDING').length;
-          const activePolls = polls.filter((p: any) => p.status === 'ACTIVE').length;
+        // Build recent activity
+        const allActivity: Array<{ type: string; title: string; time: string; status?: string }> = [];
+        tickets.slice(0, 5).forEach((t: any) => allActivity.push({ type: 'ticket', title: t.title, time: t.updatedAt || t.createdAt, status: t.status }));
+        notices.slice(0, 3).forEach((n: any) => allActivity.push({ type: 'notice', title: n.title, time: n.createdAt }));
+        invoices.filter((i: any) => i.status === 'PAID').slice(0, 3).forEach((i: any) => allActivity.push({ type: 'payment', title: `Payment for ${i.month || 'dues'}`, time: i.updatedAt || i.createdAt }));
+        allActivity.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+        const recentActivity = allActivity.slice(0, 10);
 
-          // Build recent activity
-          const allActivity: Array<{ type: string; title: string; time: string; status?: string }> = [];
-          tickets.slice(0, 5).forEach((t: any) => allActivity.push({ type: 'ticket', title: t.title, time: t.updatedAt || t.createdAt, status: t.status }));
-          notices.slice(0, 3).forEach((n: any) => allActivity.push({ type: 'notice', title: n.title, time: n.createdAt }));
-          invoices.filter((i: any) => i.status === 'PAID').slice(0, 3).forEach((i: any) => allActivity.push({ type: 'payment', title: `Payment for ${i.month || 'dues'}`, time: i.updatedAt || i.createdAt }));
-          allActivity.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
-          const recentActivity = allActivity.slice(0, 10);
-
-          setDashboard({
-            unreadNotices,
-            openTickets,
-            pendingInvoices: { count: pendingInvoices.length, overdue: pendingInvoices.some((i: any) => i.status === 'OVERDUE') },
-            pendingVisitors,
-            activePolls,
-            recentActivity,
-          });
-        } catch (err) { console.error('[Dashboard] Failed to load data:', err); }
-      })
-      .catch((err: ApiError) => {
-        if (err.status === 401) router.push('/login');
-      })
-      .finally(() => setLoading(false));
+        setDashboard({
+          unreadNotices,
+          openTickets,
+          pendingInvoices: { count: pendingInvoices.length, overdue: pendingInvoices.some((i: any) => i.status === 'OVERDUE') },
+          pendingVisitors,
+          activePolls,
+          recentActivity,
+        });
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) router.push('/login');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [router]);
-
-  const handleLogout = async () => {
-    await auth.logout();
-    router.push('/login');
-  };
 
   if (loading) {
     return (
@@ -149,8 +138,7 @@ export default function ResidentDashboard() {
     );
   }
 
-  const society = data?.memberships[0];
-  const firstName = data?.user.name?.split(' ')[0] || 'there';
+  const firstName = user?.user.name?.split(' ')[0] || 'there';
 
   // Build attention items from actual data
   const attentionItems = [
@@ -199,185 +187,135 @@ export default function ResidentDashboard() {
   const hasAttentionItems = attentionItems.length > 0;
 
   return (
-    <div className="min-h-screen bg-white text-gray-900">
-      {/* ── Header ──────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-          <button onClick={() => router.push('/')} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <div className="w-8 h-8 rounded-lg bg-accent-600 flex items-center justify-center shadow-sm">
-              <Home className="w-4 h-4 text-white" />
-            </div>
-            <div className="text-left">
-              <p className="text-body-sm font-semibold text-gray-900">{society?.societyName || 'My Community'}</p>
-              <p className="text-caption-xs text-gray-700">Resident</p>
-            </div>
-          </button>
-          <div className="flex items-center gap-1.5">
-
-            <button className="relative p-2 rounded-lg transition-colors text-gray-700 hover:text-gray-900 hover:bg-gray-50">
-              <Bell className="w-4.5 h-4.5" />
-              {dashboard.unreadNotices > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-accent-500 ring-2 ring-white" />
-              )}
-            </button>
-            <button onClick={handleLogout} className="p-2 rounded-lg transition-colors text-gray-700 hover:text-status-danger hover:bg-gray-50">
-              <LogOut className="w-4.5 h-4.5" />
-            </button>
+    <>
+      {/* ── Welcome Section ───────────────────────────────────────── */}
+      <div className="mb-8 animate-fade-in-up">
+        <div className="flex items-center gap-3 mb-1.5">
+          <div className="w-9 h-9 rounded-xl bg-accent-50 flex items-center justify-center">
+            <User className="w-4.5 h-4.5 text-accent-600 " />
+          </div>
+          <div>
+            <h1 className="text-display-sm text-gray-900">Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {firstName}</h1>
+            <p className="text-body-sm text-gray-700">
+              {hasAttentionItems
+                ? `${attentionItems.length} thing${attentionItems.length > 1 ? 's' : ''} need${attentionItems.length === 1 ? 's' : ''} your attention`
+                : 'Everything looks good today'}
+            </p>
           </div>
         </div>
-      </header>
+      </div>
 
-      <main className="max-w-6xl mx-auto px-4 py-6 pb-24">
-        {/* ── Welcome Section ───────────────────────────────────────── */}
-        <div className="mb-8 animate-fade-in-up">
-          <div className="flex items-center gap-3 mb-1.5">
-            <div className="w-9 h-9 rounded-xl bg-accent-50 flex items-center justify-center">
-              <User className="w-4.5 h-4.5 text-accent-600 " />
-            </div>
-            <div>
-              <h1 className="text-display-sm text-gray-900">Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {firstName}</h1>
-              <p className="text-body-sm text-gray-700">
-                {hasAttentionItems
-                  ? `${attentionItems.length} thing${attentionItems.length > 1 ? 's' : ''} need${attentionItems.length === 1 ? 's' : ''} your attention`
-                  : 'Everything looks good today'}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Attention Items ───────────────────────────────────────── */}
-        {hasAttentionItems && (
-          <div className="mb-8 space-y-2 animate-fade-in-up" style={{ animationDelay: '0.05s' }}>
-            {attentionItems.map((item, i) => {
-              if (!item) return null;
-              const borderColor = item.urgent ? 'border-l-status-danger' : 'border-l-accent-500';
-              const dotColor = item.urgent ? 'bg-status-danger' : 'bg-accent-500';
-              return (
-                <button
-                  key={i}
-                  onClick={() => router.push(item.href)}
-                  className={`w-full bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-between p-3.5 border-l-2 ${borderColor} hover:border-t-gray-200 hover:border-r-gray-200 hover:border-b-gray-200 hover:shadow-md transition-all`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className={`w-2 h-2 rounded-full ${dotColor} flex-shrink-0`} />
-                    <item.icon className={`w-4.5 h-4.5 ${item.urgent ? 'text-status-danger' : 'text-accent-600 '} flex-shrink-0`} />
-                    <span className="text-body-sm font-medium text-gray-900">{item.label}</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-caption-xs font-medium text-accent-600  flex-shrink-0">
-                    {item.urgent ? 'Resolve' : 'View'}
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* ── Quick Actions ─────────────────────────────────────────── */}
-        <section className="mb-8 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-title-sm text-gray-900">Quick actions</h2>
-            <span className="text-caption-xs text-gray-700">
-              {dashboard.openTickets + dashboard.pendingInvoices.count + dashboard.pendingVisitors + dashboard.unreadNotices} pending
-            </span>
-          </div>
-          <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-7 gap-2.5">
-            <QuickActionBtn icon={Wrench} label="Raise ticket" onClick={() => router.push('/dashboard/resident/tickets')} badge={dashboard.openTickets} urgent />
-            <QuickActionBtn icon={CreditCard} label="Pay dues" onClick={() => router.push('/dashboard/resident/invoices')} badge={dashboard.pendingInvoices.count} urgent={dashboard.pendingInvoices.overdue} />
-            <QuickActionBtn icon={CalendarRange} label="Book amenity" onClick={() => router.push('/dashboard/resident/amenities')} />
-            <QuickActionBtn icon={QrCode} label="Visitor pass" onClick={() => router.push('/dashboard/resident/visitors')} badge={dashboard.pendingVisitors} />
-            <QuickActionBtn icon={FileText} label="Notices" onClick={() => router.push('/dashboard/resident/notices')} badge={dashboard.unreadNotices} />
-            <QuickActionBtn icon={BarChart3} label="Vote" onClick={() => router.push('/dashboard/resident/polls')} badge={dashboard.activePolls} />
-            <QuickActionBtn icon={Folder} label="Documents" onClick={() => router.push('/dashboard/resident/documents')} />
-            <QuickActionBtn icon={Package} label="Packages" onClick={() => router.push('/dashboard/resident/parcels')} />
-          </div>
-        </section>
-
-        {/* ── Summary stats + Activity ──────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in-up" style={{ animationDelay: '0.15s' }}>
-          {/* Stats row as summary cards */}
-          <div className="lg:col-span-1 grid grid-cols-2 gap-3">
-            {[
-              { label: 'Open tickets', value: dashboard.openTickets, urgent: dashboard.openTickets > 0 },
-              { label: 'Unread notices', value: dashboard.unreadNotices, urgent: dashboard.unreadNotices > 0 },
-              { label: 'Pending dues', value: dashboard.pendingInvoices.count, urgent: dashboard.pendingInvoices.overdue },
-              { label: 'Active polls', value: dashboard.activePolls, urgent: false },
-            ].map((s) => (
-              <div key={s.label} className="bg-white border border-gray-200 rounded-xl shadow-sm p-3.5">
-                <p className="text-caption-xs text-gray-700 mb-1">{s.label}</p>
-                <p className={`text-display-sm font-bold ${s.urgent ? 'text-status-danger' : 'text-gray-900'}`}>{s.value}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Recent Activity */}
-          <div className="lg:col-span-2">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-title-sm text-gray-900">Recent activity</h2>
-            </div>
-            <Card variant="elevated" className="overflow-hidden">
-              {dashboard.recentActivity.length > 0 ? (
-                <div className="divide-y divide-gray-200">
-                  {dashboard.recentActivity.map((activity, i) => {
-                    const Icon = activityIconMap[activity.type] || Clock;
-                    return (
-                      <div key={i} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                          activity.type === 'ticket' ? 'bg-status-warning/10 text-status-warning' :
-                          activity.type === 'payment' ? 'bg-status-success/10 text-status-success' :
-                          'bg-accent-50 text-accent-600 '
-                        }`}>
-                          <Icon className="w-4 h-4" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-body-sm font-medium text-gray-900 truncate">{activity.title}</p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-caption-xs text-gray-700 capitalize">{activity.type}</span>
-                            <span className="text-caption-xs text-gray-700">·</span>
-                            <span className="text-caption-xs text-gray-700">{timeAgo(activity.time)}</span>
-                          </div>
-                        </div>
-                        {activity.status && (
-                          <StatusBadge variant={statusVariant(activity.status)} dot={false}>
-                            {activity.status.replace(/_/g, ' ')}
-                          </StatusBadge>
-                        )}
-                      </div>
-                    );
-                  })}
+      {/* ── Attention Items ───────────────────────────────────────── */}
+      {hasAttentionItems && (
+        <div className="mb-8 space-y-2 animate-fade-in-up" style={{ animationDelay: '0.05s' }}>
+          {attentionItems.map((item, i) => {
+            if (!item) return null;
+            const borderColor = item.urgent ? 'border-l-status-danger' : 'border-l-accent-500';
+            const dotColor = item.urgent ? 'bg-status-danger' : 'bg-accent-500';
+            return (
+              <button
+                key={i}
+                onClick={() => router.push(item.href)}
+                className={`w-full bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-between p-3.5 border-l-2 ${borderColor} hover:border-t-gray-200 hover:border-r-gray-200 hover:border-b-gray-200 hover:shadow-md transition-all`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className={`w-2 h-2 rounded-full ${dotColor} flex-shrink-0`} />
+                  <item.icon className={`w-4.5 h-4.5 ${item.urgent ? 'text-status-danger' : 'text-accent-600 '} flex-shrink-0`} />
+                  <span className="text-body-sm font-medium text-gray-900">{item.label}</span>
                 </div>
-              ) : (
-                <EmptyState
-                  icon={Clock}
-                  title="No recent activity"
-                  description="Your community updates, ticket status changes, and payments will show up here."
-                />
-              )}
-            </Card>
-          </div>
+                <div className="flex items-center gap-1 text-caption-xs font-medium text-accent-600  flex-shrink-0">
+                  {item.urgent ? 'Resolve' : 'View'}
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </div>
+              </button>
+            );
+          })}
         </div>
-      </main>
+      )}
 
-      {/* ── Mobile bottom nav ───────────────────────────────────────── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200 border-t border-gray-200 px-2 py-1.5 safe-area-bottom">
-        <div className="flex items-center justify-around">
+      {/* ── Quick Actions ─────────────────────────────────────────── */}
+      <section className="mb-8 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-title-sm text-gray-900">Quick actions</h2>
+          <span className="text-caption-xs text-gray-700">
+            {dashboard.openTickets + dashboard.pendingInvoices.count + dashboard.pendingVisitors + dashboard.unreadNotices} pending
+          </span>
+        </div>
+        <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-7 gap-2.5">
+          <QuickActionBtn icon={Wrench} label="Raise ticket" onClick={() => router.push('/dashboard/resident/tickets')} badge={dashboard.openTickets} urgent />
+          <QuickActionBtn icon={CreditCard} label="Pay dues" onClick={() => router.push('/dashboard/resident/invoices')} badge={dashboard.pendingInvoices.count} urgent={dashboard.pendingInvoices.overdue} />
+          <QuickActionBtn icon={CalendarRange} label="Book amenity" onClick={() => router.push('/dashboard/resident/amenities')} />
+          <QuickActionBtn icon={QrCode} label="Visitor pass" onClick={() => router.push('/dashboard/resident/visitors')} badge={dashboard.pendingVisitors} />
+          <QuickActionBtn icon={FileText} label="Notices" onClick={() => router.push('/dashboard/resident/notices')} badge={dashboard.unreadNotices} />
+          <QuickActionBtn icon={BarChart3} label="Vote" onClick={() => router.push('/dashboard/resident/polls')} badge={dashboard.activePolls} />
+          <QuickActionBtn icon={Folder} label="Documents" onClick={() => router.push('/dashboard/resident/documents')} />
+          <QuickActionBtn icon={Package} label="Packages" onClick={() => router.push('/dashboard/resident/parcels')} />
+        </div>
+      </section>
+
+      {/* ── Summary stats + Activity ──────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in-up" style={{ animationDelay: '0.15s' }}>
+        {/* Stats row as summary cards */}
+        <div className="lg:col-span-1 grid grid-cols-2 gap-3">
           {[
-            { icon: Home, label: 'Home', href: '/dashboard/resident' },
-            { icon: Bell, label: 'Notices', href: '/dashboard/resident/notices' },
-            { icon: Wrench, label: 'Tickets', href: '/dashboard/resident/tickets' },
-            { icon: CreditCard, label: 'Payments', href: '/dashboard/resident/invoices' },
-          ].map((item) => (
-            <button
-              key={item.label}
-              onClick={() => router.push(item.href)}
-              className="flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-lg transition-colors"
-            >
-              <item.icon className={`w-5 h-5 ${item.href === '/dashboard/resident' ? 'text-accent-600 ' : 'text-gray-700'}`} />
-              <span className={`text-caption-xs font-medium ${item.href === '/dashboard/resident' ? 'text-accent-600 ' : 'text-gray-700'}`}>{item.label}</span>
-            </button>
+            { label: 'Open tickets', value: dashboard.openTickets, urgent: dashboard.openTickets > 0 },
+            { label: 'Unread notices', value: dashboard.unreadNotices, urgent: dashboard.unreadNotices > 0 },
+            { label: 'Pending dues', value: dashboard.pendingInvoices.count, urgent: dashboard.pendingInvoices.overdue },
+            { label: 'Active polls', value: dashboard.activePolls, urgent: false },
+          ].map((s) => (
+            <div key={s.label} className="bg-white border border-gray-200 rounded-xl shadow-sm p-3.5">
+              <p className="text-caption-xs text-gray-700 mb-1">{s.label}</p>
+              <p className={`text-display-sm font-bold ${s.urgent ? 'text-status-danger' : 'text-gray-900'}`}>{s.value}</p>
+            </div>
           ))}
         </div>
-      </nav>
-    </div>
+
+        {/* Recent Activity */}
+        <div className="lg:col-span-2">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-title-sm text-gray-900">Recent activity</h2>
+          </div>
+          <Card variant="elevated" className="overflow-hidden">
+            {dashboard.recentActivity.length > 0 ? (
+              <div className="divide-y divide-gray-200">
+                {dashboard.recentActivity.map((activity, i) => {
+                  const Icon = activityIconMap[activity.type] || Clock;
+                  return (
+                    <div key={i} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                        activity.type === 'ticket' ? 'bg-status-warning/10 text-status-warning' :
+                        activity.type === 'payment' ? 'bg-status-success/10 text-status-success' :
+                        'bg-accent-50 text-accent-600 '
+                      }`}>
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-body-sm font-medium text-gray-900 truncate">{activity.title}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-caption-xs text-gray-700 capitalize">{activity.type}</span>
+                          <span className="text-caption-xs text-gray-700">·</span>
+                          <span className="text-caption-xs text-gray-700">{timeAgo(activity.time)}</span>
+                        </div>
+                      </div>
+                      {activity.status && (
+                        <StatusBadge variant={statusVariant(activity.status)} dot={false}>
+                          {activity.status.replace(/_/g, ' ')}
+                        </StatusBadge>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyState
+                icon={Clock}
+                title="No recent activity"
+                description="Your community updates, ticket status changes, and payments will show up here."
+              />
+            )}
+          </Card>
+        </div>
+      </div>
+    </>
   );
 }

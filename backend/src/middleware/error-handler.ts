@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { AppError, ErrorCodes } from '../lib/app-error';
 import { sendError } from '../lib/response';
 import { ZodError } from 'zod';
+import { PaymentProviderError } from '../lib/payment-provider';
 
 export function errorHandler(
   err: Error,
@@ -21,6 +22,21 @@ export function errorHandler(
       .map((e) => `${e.path.join('.')}: ${e.message}`)
       .join('; ');
     sendError(res, new AppError(ErrorCodes.VALIDATION_ERROR, 400, message));
+    return;
+  }
+
+  // Payment gateway failure — the provider logs the full Safepay reason server-side;
+  // the client gets a clear, honest message (no internal details leaked).
+  if (err instanceof PaymentProviderError) {
+    console.error(`[PaymentGateway] ${err.message} — check SAFEPAY_* env vars and Railway logs for the Safepay error detail`);
+    sendError(
+      res,
+      new AppError(
+        ErrorCodes.PAYMENT_GATEWAY_ERROR,
+        502,
+        'We could not start the payment right now. Please try again in a moment, or contact your society admin.'
+      )
+    );
     return;
   }
 

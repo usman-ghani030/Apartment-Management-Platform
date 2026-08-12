@@ -360,7 +360,7 @@ model Invoice {
   invoiceNumber String        @unique
   title         String
   description   String?
-  amount        Int           // Amount in cents (avoid floating point)
+  amount        Int           // Amount in paisa, the lowest denomination (avoid floating point)
   dueDate       DateTime
   status        InvoiceStatus @default(ISSUED)
   periodStart   DateTime?
@@ -383,7 +383,7 @@ model Payment {
   societyId     String
   society       Society  @relation(fields: [societyId], references: [id])
   amount        Int
-  currency      String   @default("usd")
+  currency      String   @default("pkr")
   // Payment gateway fields (Safepay hosted checkout)
   provider      String   @default("offline") // offline | safepay
   providerSessionId String? @unique // Safepay tracker token

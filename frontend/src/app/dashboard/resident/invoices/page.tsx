@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, DollarSign, CreditCard, AlertCircle, CheckCircle, Clock, XCircle, ShieldAlert, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Banknote, CreditCard, AlertCircle, CheckCircle, Clock, XCircle, ShieldAlert, RefreshCw } from 'lucide-react';
 import { ApiError, apiGet, apiPost } from '@/lib/api';
 import type { InvoiceResponse } from '@apartment/shared';
 
@@ -20,6 +20,9 @@ const STATUS_STYLES: Record<string, string> = {
   CANCELLED: 'bg-gray-500/10 text-gray-700',
   DISPUTED: 'bg-yellow-500/10 text-yellow-400',
 };
+
+// Amounts are stored in paisa (rupees × 100) — format as Pakistani Rupees.
+const formatRs = (paisa: number) => `Rs. ${(paisa / 100).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function ResidentInvoicesPage() {
   const router = useRouter();
@@ -130,10 +133,10 @@ export default function ResidentInvoicesPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-700">Total Outstanding</p>
-              <p className="text-3xl font-bold">${(totalDue / 100).toFixed(2)}</p>
+              <p className="text-3xl font-bold">{formatRs(totalDue)}</p>
             </div>
             <div className="w-14 h-14 bg-accent-50 rounded-2xl flex items-center justify-center">
-              <DollarSign className="w-7 h-7 text-accent-600" />
+              <Banknote className="w-7 h-7 text-accent-600" />
             </div>
           </div>
         </div>
@@ -162,7 +165,7 @@ export default function ResidentInvoicesPage() {
         {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
 
         {invoices.length === 0 ? (
-          <div className="text-center py-20"><DollarSign className="w-12 h-12 text-gray-700 mx-auto mb-4" /><p className="text-gray-700">No invoices</p><p className="text-gray-700 text-sm mt-1">Your society hasn't issued any invoices yet</p></div>
+          <div className="text-center py-20"><Banknote className="w-12 h-12 text-gray-700 mx-auto mb-4" /><p className="text-gray-700">No invoices</p><p className="text-gray-700 text-sm mt-1">Your society hasn't issued any invoices yet</p></div>
         ) : (
           <div className="space-y-4">
             {invoices.map((inv) => (
@@ -178,7 +181,7 @@ export default function ResidentInvoicesPage() {
                     {inv.description && <p className="text-xs text-gray-700 mt-1">{inv.description}</p>}
                   </div>
                   <div className="text-right ml-4">
-                    <p className="text-lg font-bold">${(inv.amount / 100).toFixed(2)}</p>
+                    <p className="text-lg font-bold">{formatRs(inv.amount)}</p>
                   </div>
                 </div>
                 {/* Actions */}

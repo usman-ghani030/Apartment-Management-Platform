@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, CreditCard, DollarSign, Receipt } from 'lucide-react';
+import { ArrowLeft, Plus, CreditCard, Banknote, Receipt } from 'lucide-react';
 import { ApiError, apiGet, apiPost, apiPatch } from '@/lib/api';
 import type { InvoiceResponse } from '@apartment/shared';
 
@@ -29,6 +29,9 @@ const STATUS_STYLES: Record<string, string> = {
   CANCELLED: 'bg-gray-500/10 text-gray-700',
   DISPUTED: 'bg-yellow-500/10 text-yellow-400',
 };
+
+// Amounts are stored in paisa (rupees × 100) — format as Pakistani Rupees.
+const formatRs = (paisa: number) => `Rs. ${(paisa / 100).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function AdminInvoicesPage() {
   const router = useRouter();
@@ -137,7 +140,7 @@ export default function AdminInvoicesPage() {
                 <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50 resize-y" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Amount ($)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Amount (Rs.)</label>
                 <input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" required className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50" />
               </div>
               <div>
@@ -153,7 +156,7 @@ export default function AdminInvoicesPage() {
         )}
 
         {invoices.length === 0 ? (
-          <div className="text-center py-20"><DollarSign className="w-12 h-12 text-gray-700 mx-auto mb-4" /><p className="text-gray-700">No invoices yet</p><p className="text-gray-700 text-sm mt-1">Create your first invoice to get started</p></div>
+          <div className="text-center py-20"><Banknote className="w-12 h-12 text-gray-700 mx-auto mb-4" /><p className="text-gray-700">No invoices yet</p><p className="text-gray-700 text-sm mt-1">Create your first invoice to get started</p></div>
         ) : (
           <div className="space-y-3">
             {invoices.map((inv) => (
@@ -168,9 +171,9 @@ export default function AdminInvoicesPage() {
                     <p className="text-xs text-gray-700 mt-0.5">Unit {inv.unitNumber} · Due {new Date(inv.dueDate).toLocaleDateString()}</p>
                   </div>
                   <div className="text-right ml-4">
-                    <p className="text-lg font-bold">${(inv.amount / 100).toFixed(2)}</p>
+                    <p className="text-lg font-bold">{formatRs(inv.amount)}</p>
                     {inv.paidAmount && inv.paidAmount > 0 ? (
-                      <p className="text-xs text-green-400">Paid ${(inv.paidAmount / 100).toFixed(2)}</p>
+                      <p className="text-xs text-green-400">Paid {formatRs(inv.paidAmount)}</p>
                     ) : (
                       <p className="text-xs text-gray-700">{inv.status === 'OVERDUE' ? 'Overdue' : 'Unpaid'}</p>
                     )}
@@ -217,7 +220,7 @@ export default function AdminInvoicesPage() {
                           <div className="font-medium text-gray-900">{p.invoiceTitle}</div>
                           <div className="text-xs text-gray-700 font-mono">{p.invoiceNumber}</div>
                         </td>
-                        <td className="px-4 py-3 font-medium text-gray-900">{(p.amount / 100).toFixed(2)} {p.currency}</td>
+                        <td className="px-4 py-3 font-medium text-gray-900">{formatRs(p.amount)}</td>
                         <td className="px-4 py-3">
                           <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${p.provider === 'safepay' ? 'bg-blue-500/10 text-blue-700' : 'bg-gray-500/10 text-gray-700'}`}>
                             {p.provider === 'safepay' ? 'Safepay' : 'Offline'}

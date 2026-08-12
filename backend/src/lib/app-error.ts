@@ -28,6 +28,7 @@ export const ErrorCodes = {
 
   // Internal
   INTERNAL_ERROR: 'INTERNAL_ERROR',
+  PAYMENT_GATEWAY_ERROR: 'PAYMENT_GATEWAY_ERROR',
 
   // Tenant
   TENANT_MISMATCH: 'TENANT_MISMATCH',

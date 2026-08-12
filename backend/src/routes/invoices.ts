@@ -248,7 +248,7 @@ router.post('/:id/pay', requireAuth, loadMembership, async (req, res, next) => {
     if (!provider.isConfigured()) {
       // No payment gateway configured — create an offline payment record (for dev/testing)
       const payment = await prisma.payment.create({
-        data: { invoiceId: invoice.id, societyId, amount: invoice.amount, status: 'succeeded', paidAt: new Date() },
+        data: { invoiceId: invoice.id, societyId, amount: invoice.amount, currency: 'PKR', status: 'succeeded', paidAt: new Date() },
       });
       await prisma.invoice.update({ where: { id: invoice.id }, data: { status: 'PAID' } });
       await logAudit({
