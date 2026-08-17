@@ -9,7 +9,38 @@ import { sendNotification } from '../lib/notifications';
 import { CreateParcelSchema, UpdateParcelSchema } from '@apartment/shared';
 import type { ParcelResponse } from '@apartment/shared';
 
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+
 const router = Router();
+
+// ── Multer setup for parcel photo uploads ───────────────────────────────────
+const PARCEL_UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads', 'parcels');
+if (!fs.existsSync(PARCEL_UPLOAD_DIR)) {
+  fs.mkdirSync(PARCEL_UPLOAD_DIR, { recursive: true });
+}
+
+const parcelPhotoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, PARCEL_UPLOAD_DIR),
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, 'parcel-' + uniqueSuffix + '-' + file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_'));
+  },
+});
+
+const uploadParcelPhoto = multer({
+  storage: parcelPhotoStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max per photo
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new AppError(ErrorCodes.VALIDATION_ERROR, 400, 'Only JPEG, PNG, WebP, and GIF images are allowed'));
+    }
+  },
+});
 
 // ── Helper: get user's unit IDs in a society ───────────────────────────────
 async function getUserUnitIds(userId: string, societyId: string): Promise<string[]> {
@@ -105,6 +136,29 @@ router.post('/', requireAuth, loadMembership, requireRole('create', 'parcel'), a
     });
 
     sendSuccess(res, formatParcel(parcel), 201);
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/v1/parcels/photo — upload a parcel photo ─────────────────────
+// Uploads a photo and returns a relative URL to attach to a parcel.
+router.post('/photo', requireAuth, loadMembership, requireRole('create', 'parcel'), uploadParcelPhoto.single('photo'), async (req, res, next) => {
+  try {
+    if (!req.file) {
+      throw new AppError(ErrorCodes.VALIDATION_ERROR, 400, 'No photo provided');
+    }
+    const url = `/api/v1/parcels/photo/${req.file.filename}`;
+    sendSuccess(res, { url }, 201);
+  } catch (err) { next(err); }
+});
+
+// ── GET /api/v1/parcels/photo/:filename — serve a parcel photo ─────────────
+router.get('/photo/:filename', async (req, res, next) => {
+  try {
+    const filePath = path.join(PARCEL_UPLOAD_DIR, req.params.filename);
+    if (!fs.existsSync(filePath)) {
+      throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Photo not found');
+    }
+    res.sendFile(filePath);
   } catch (err) { next(err); }
 });
 

@@ -2,9 +2,11 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Package, CheckCircle, Camera, User, Clock, Building2 } from 'lucide-react';
+import { ArrowLeft, Package, CheckCircle, User, Clock } from 'lucide-react';
 import { ApiError, apiGet, apiPatch } from '@/lib/api';
 import type { ParcelResponse } from '@apartment/shared';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 const STATUS_STYLES: Record<string, string> = {
   ARRIVED: 'bg-yellow-500/10 text-yellow-400',
@@ -97,12 +99,13 @@ export default function ResidentParcelsPage() {
                     </div>
                     {p.photoUrl && (
                       <a
-                        href={p.photoUrl}
+                        href={p.photoUrl.startsWith('http') ? p.photoUrl : `${API_BASE}${p.photoUrl}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-accent-600 hover:underline mt-1"
+                        className="block w-16 h-16 rounded-lg overflow-hidden bg-gray-50 hover:opacity-90 transition-opacity mt-2"
+                        title="View parcel photo"
                       >
-                        <Camera className="w-3 h-3" /> View photo
+                        <img src={p.photoUrl.startsWith('http') ? p.photoUrl : `${API_BASE}${p.photoUrl}`} alt={`Parcel ${p.description}`} className="w-full h-full object-cover" />
                       </a>
                     )}
                   </div>

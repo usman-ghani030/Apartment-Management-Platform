@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, CreditCard, Banknote, Receipt } from 'lucide-react';
+import { ArrowLeft, Plus, CreditCard, Banknote, Receipt, BellRing, RefreshCw } from 'lucide-react';
 import { ApiError, apiGet, apiPost, apiPatch } from '@/lib/api';
 import type { InvoiceResponse } from '@apartment/shared';
 
@@ -49,6 +49,50 @@ export default function AdminInvoicesPage() {
   const [error, setError] = useState('');
   const [payments, setPayments] = useState<PaymentHistoryItem[]>([]);
   const [paymentsLoading, setPaymentsLoading] = useState(true);
+  const [reminderDays, setReminderDays] = useState(3);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsMsg, setSettingsMsg] = useState('');
+  const [settingsErr, setSettingsErr] = useState('');
+  const [runningReminders, setRunningReminders] = useState(false);
+  const [reminderResult, setReminderResult] = useState('');
+
+  // Dues-reminder settings (Phase 7: how many days before due to remind)
+  const fetchSettings = useCallback(async () => {
+    try {
+      const data = await apiGet<{ dueReminderDays: number }>('/api/v1/settings');
+      setReminderDays(data?.dueReminderDays ?? 3);
+    } catch {
+      // Best-effort — the card shows the default window if settings can't load.
+    } finally {
+      setSettingsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchSettings(); }, [fetchSettings]);
+
+  const saveSettings = async () => {
+    setSettingsMsg(''); setSettingsErr('');
+    try {
+      const data = await apiPatch<{ dueReminderDays: number }>('/api/v1/settings', { dueReminderDays: reminderDays });
+      setSettingsMsg(`Saved — reminders go out ${data.dueReminderDays} day(s) before the due date.`);
+    } catch (err) {
+      if (err instanceof ApiError) setSettingsErr(err.message);
+    }
+  };
+
+  const runReminders = async () => {
+    setRunningReminders(true); setReminderResult(''); setSettingsErr('');
+    try {
+      const result = await apiPost<{ reminded: number }>('/api/v1/settings/run-reminders');
+      setReminderResult(result.reminded > 0
+        ? `Sent ${result.reminded} reminder(s) for invoices coming due.`
+        : 'No reminders needed right now — nothing unpaid is due within the window.');
+    } catch (err) {
+      if (err instanceof ApiError) setSettingsErr(err.message);
+    } finally {
+      setRunningReminders(false);
+    }
+  };
 
   const fetchPayments = useCallback(async () => {
     try {
@@ -119,6 +163,40 @@ export default function AdminInvoicesPage() {
         </div>
 
         {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
+
+        {/* Automated dues reminders — window setting + manual trigger */}
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5 mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 bg-accent-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                <BellRing className="w-5 h-5 text-accent-600" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-sm text-gray-900">Automated dues reminders</h2>
+                <p className="text-xs text-gray-700 mt-0.5">Residents get a reminder this many days before an invoice is due. The daily job sends them automatically.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <input
+                type="number"
+                min={1}
+                max={30}
+                value={reminderDays}
+                onChange={(e) => setReminderDays(Number(e.target.value))}
+                aria-label="Reminder days before due"
+                className="w-20 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-accent-500/50"
+              />
+              <span className="text-xs text-gray-700">days before due</span>
+              <button onClick={saveSettings} disabled={settingsLoading} className="bg-accent-600 hover:bg-accent-500 text-white rounded-lg px-4 py-2 text-sm font-medium transition-all disabled:opacity-50">Save</button>
+              <button onClick={runReminders} disabled={runningReminders} className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-3 py-2 font-medium transition-all disabled:opacity-50">
+                <RefreshCw className={`w-3 h-3 ${runningReminders ? 'animate-spin' : ''}`} /> {runningReminders ? 'Sending…' : 'Send reminders now'}
+              </button>
+            </div>
+          </div>
+          {settingsMsg && <p className="text-xs text-green-600 mt-3">{settingsMsg}</p>}
+          {settingsErr && <p className="text-xs text-red-500 mt-3">{settingsErr}</p>}
+          {reminderResult && <p className="text-xs text-gray-700 mt-3">{reminderResult}</p>}
+        </div>
 
         {showForm && (
           <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 border border-gray-200 mb-8">

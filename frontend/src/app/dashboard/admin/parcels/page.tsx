@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Package, Plus, Search, CheckCircle, Building2, User, Clock, Camera, X } from 'lucide-react';
-import { ApiError, apiGet, apiPost, apiPatch } from '@/lib/api';
+import { ArrowLeft, Package, Plus, Search, CheckCircle, Building2, User, Clock, X } from 'lucide-react';
+import { ApiError, apiGet, apiPost, apiPatch, apiUpload } from '@/lib/api';
 import type { ParcelResponse } from '@apartment/shared';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 const STATUS_STYLES: Record<string, string> = {
   ARRIVED: 'bg-yellow-500/10 text-yellow-400',
@@ -30,7 +32,11 @@ export default function AdminParcelsPage() {
   const [selectedUnitId, setSelectedUnitId] = useState('');
   const [description, setDescription] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const fetchParcels = useCallback(async () => {
     try {
@@ -69,21 +75,41 @@ export default function AdminParcelsPage() {
     }
   };
 
+  const handlePhotoSelect = (file: File | null) => {
+    setPhotoFile(file);
+    if (file) {
+      setPhotoPreview(URL.createObjectURL(file));
+    } else {
+      setPhotoPreview('');
+      setPhotoUrl('');
+    }
+  };
+
   const handleLogArrival = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUnitId || !description.trim()) return;
     setSubmitting(true); setError(''); setSuccess('');
     try {
+      // Upload the photo first (if chosen), then create the parcel with the returned URL
+      let uploadedUrl = photoUrl;
+      if (photoFile) {
+        setUploadingPhoto(true);
+        const formData = new FormData();
+        formData.append('photo', photoFile);
+        const res = await apiUpload<{ url: string }>('/api/v1/parcels/photo', formData);
+        uploadedUrl = res.url;
+      }
       const body: any = { unitId: selectedUnitId, description: description.trim() };
-      if (photoUrl.trim()) body.photoUrl = photoUrl.trim();
+      if (uploadedUrl) body.photoUrl = uploadedUrl;
       await apiPost('/api/v1/parcels', body);
       setSuccess('Parcel arrival logged successfully');
-      setSelectedUnitId(''); setDescription(''); setPhotoUrl('');
+      setSelectedUnitId(''); setDescription(''); setPhotoUrl(''); setPhotoFile(null); setPhotoPreview('');
+      if (photoInputRef.current) photoInputRef.current.value = '';
       setShowForm(false);
       fetchParcels();
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
-    } finally { setSubmitting(false); }
+    } finally { setUploadingPhoto(false); setSubmitting(false); }
   };
 
   if (loading) return <div className="min-h-screen bg-white text-gray-900 flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-accent-500 border-t-transparent rounded-full" /></div>;
@@ -175,18 +201,31 @@ export default function AdminParcelsPage() {
                 />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Photo URL (optional)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Parcel Photo (optional)</label>
                 <input
-                  type="url"
-                  value={photoUrl}
-                  onChange={(e) => setPhotoUrl(e.target.value)}
-                  placeholder="https://example.com/photo.jpg"
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50"
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  onChange={(e) => handlePhotoSelect(e.target.files?.[0] || null)}
+                  className="w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-accent-600 file:text-white hover:file:bg-accent-700"
                 />
+                {photoPreview && (
+                  <div className="mt-2 relative inline-block">
+                    <img src={photoPreview} alt="Parcel photo preview" className="w-32 h-32 object-cover rounded-lg border border-gray-200" />
+                    <button
+                      type="button"
+                      onClick={() => { setPhotoFile(null); setPhotoPreview(''); setPhotoUrl(''); if (photoInputRef.current) photoInputRef.current.value = ''; }}
+                      className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-400 transition-colors"
+                      title="Remove photo"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="md:col-span-2 flex gap-3">
-                <button type="submit" disabled={submitting} className="bg-accent-600 hover:bg-accent-700 disabled:opacity-50 text-white rounded-lg px-6 py-2 text-sm font-medium transition-all">
-                  {submitting ? 'Logging...' : 'Log Arrival'}
+                <button type="submit" disabled={submitting || uploadingPhoto} className="bg-accent-600 hover:bg-accent-700 disabled:opacity-50 text-white rounded-lg px-6 py-2 text-sm font-medium transition-all">
+                  {uploadingPhoto ? 'Uploading photo...' : submitting ? 'Logging...' : 'Log Arrival'}
                 </button>
                 <button type="button" onClick={() => { setShowForm(false); setError(''); }} className="text-sm text-gray-700 hover:text-gray-900 px-4 py-2">Cancel</button>
               </div>
@@ -263,16 +302,16 @@ export default function AdminParcelsPage() {
                   </div>
 
                   {/* Right: Actions */}
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     {p.photoUrl && (
                       <a
-                        href={p.photoUrl}
+                        href={p.photoUrl.startsWith('http') ? p.photoUrl : `${API_BASE}${p.photoUrl}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="p-2 rounded-lg hover:bg-gray-50 text-gray-700 transition-colors"
+                        className="block w-14 h-14 rounded-lg overflow-hidden bg-gray-50 hover:opacity-90 transition-opacity"
                         title="View photo"
                       >
-                        <Camera className="w-4 h-4" />
+                        <img src={p.photoUrl.startsWith('http') ? p.photoUrl : `${API_BASE}${p.photoUrl}`} alt={`Parcel ${p.description}`} className="w-full h-full object-cover" />
                       </a>
                     )}
                     {p.status === 'ARRIVED' && (

@@ -2,9 +2,11 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Shield, Search, CheckCircle, XCircle, LogOut, Clock, User, Phone, Car } from 'lucide-react';
-import { auth, ApiError, apiPost } from '@/lib/api';
+import { Shield, Search, CheckCircle, XCircle, LogOut, Clock, User, Phone, Car, Package, PackagePlus, X } from 'lucide-react';
+import { auth, ApiError, apiPost, apiGet, apiUpload } from '@/lib/api';
 import type { AuthResponse, VisitorPassResponse } from '@apartment/shared';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 export default function GuardDashboard() {
   const router = useRouter();
@@ -17,7 +19,17 @@ export default function GuardDashboard() {
   const [actionMsg, setActionMsg] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [recording, setRecording] = useState(false);
-  const [mode, setMode] = useState<'scan' | 'recent'>('scan');
+  const [mode, setMode] = useState<'scan' | 'parcels' | 'recent'>('scan');
+
+  // Parcel arrival state
+  const [units, setUnits] = useState<{ id: string; unitNumber: string; buildingName: string }[]>([]);
+  const [parcelUnitId, setParcelUnitId] = useState('');
+  const [parcelDescription, setParcelDescription] = useState('');
+  const [parcelPhoto, setParcelPhoto] = useState<File | null>(null);
+  const [parcelPreview, setParcelPreview] = useState('');
+  const [parcelMsg, setParcelMsg] = useState('');
+  const [parcelErr, setParcelErr] = useState('');
+  const [loggingParcel, setLoggingParcel] = useState(false);
 
   useEffect(() => {
     auth.me()
@@ -27,6 +39,16 @@ export default function GuardDashboard() {
         );
         if (!isGuard) { router.push('/login'); return; }
         setAuthData(data);
+        // Load units for parcel arrival logging
+        apiGet<any[]>('/api/v1/units')
+          .then((data) => {
+            setUnits((data || []).map((u) => ({
+              id: u.id,
+              unitNumber: u.unitNumber,
+              buildingName: u.buildingName || '',
+            })));
+          })
+          .catch(() => {});
       })
       .catch(() => router.push('/login'))
       .finally(() => setLoading(false));
@@ -67,6 +89,31 @@ export default function GuardDashboard() {
   const handleLogout = async () => {
     await auth.logout();
     router.push('/login');
+  };
+
+  const handleLogParcel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!parcelUnitId || !parcelDescription.trim()) return;
+    setLoggingParcel(true); setParcelMsg(''); setParcelErr('');
+    try {
+      let photoUrl = '';
+      if (parcelPhoto) {
+        const formData = new FormData();
+        formData.append('photo', parcelPhoto);
+        const res = await apiUpload<{ url: string }>('/api/v1/parcels/photo', formData);
+        photoUrl = res.url;
+      }
+      await apiPost('/api/v1/parcels', {
+        unitId: parcelUnitId,
+        description: parcelDescription.trim(),
+        ...(photoUrl ? { photoUrl } : {}),
+      });
+      setParcelMsg('✓ Parcel arrival logged — resident notified');
+      setParcelUnitId(''); setParcelDescription(''); setParcelPhoto(null); setParcelPreview('');
+    } catch (err) {
+      if (err instanceof ApiError) setParcelErr(err.message);
+      else setParcelErr('Failed to log parcel');
+    } finally { setLoggingParcel(false); }
   };
 
   if (loading) return (
@@ -120,6 +167,16 @@ export default function GuardDashboard() {
             <Search className="w-4 h-4 inline mr-1.5" />Scan QR
           </button>
           <button
+            onClick={() => { setMode('parcels'); setPass(null); setParcelMsg(''); setParcelErr(''); }}
+            className={`flex-1 text-body-sm px-4 py-2.5 rounded-md transition-all font-medium ${
+              mode === 'parcels'
+                ? 'bg-accent-600 text-white shadow-sm'
+                : 'text-gray-700 hover:text-gray-900'
+            }`}
+          >
+            <Package className="w-4 h-4 inline mr-1.5" />Parcels
+          </button>
+          <button
             onClick={() => { setMode('recent'); setPass(null); }}
             className={`flex-1 text-body-sm px-4 py-2.5 rounded-md transition-all font-medium ${
               mode === 'recent'
@@ -130,6 +187,90 @@ export default function GuardDashboard() {
             <Clock className="w-4 h-4 inline mr-1.5" />Recent Activity
           </button>
         </div>
+
+        {mode === 'parcels' && (
+          <>
+            {/* Log Parcel Arrival */}
+            <form onSubmit={handleLogParcel} className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-6">
+              <div className="flex items-center gap-2 mb-4">
+                <PackagePlus className="w-5 h-5 text-accent-600" />
+                <h2 className="text-title-sm">Log parcel arrival</h2>
+              </div>
+
+              <label className="block text-caption text-gray-700 mb-1">Unit *</label>
+              <select
+                value={parcelUnitId}
+                onChange={(e) => setParcelUnitId(e.target.value)}
+                required
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-body-sm text-gray-900 focus:outline-none focus:border-accent-500/50 mb-4"
+              >
+                <option value="">Select a unit...</option>
+                {units.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    Unit {u.unitNumber}{u.buildingName ? ` (${u.buildingName})` : ''}
+                  </option>
+                ))}
+              </select>
+
+              <label className="block text-caption text-gray-700 mb-1">Description *</label>
+              <input
+                type="text"
+                value={parcelDescription}
+                onChange={(e) => setParcelDescription(e.target.value)}
+                placeholder="e.g. Amazon package, large box from FedEx"
+                required
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-body-sm text-gray-900 placeholder-neutral-500 focus:outline-none focus:border-accent-500/50 mb-4"
+              />
+
+              <label className="block text-caption text-gray-700 mb-1">Photo (optional)</label>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] || null;
+                  setParcelPhoto(f);
+                  setParcelPreview(f ? URL.createObjectURL(f) : '');
+                }}
+                className="w-full text-body-sm text-gray-700 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-body-sm file:font-medium file:bg-accent-600 file:text-white hover:file:bg-accent-700 mb-4"
+              />
+              {parcelPreview && (
+                <div className="relative inline-block mb-4">
+                  <img src={parcelPreview} alt="Parcel photo preview" className="w-28 h-28 object-cover rounded-lg border border-gray-200" />
+                  <button
+                    type="button"
+                    onClick={() => { setParcelPhoto(null); setParcelPreview(''); }}
+                    className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-400 transition-colors"
+                    title="Remove photo"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+
+              {parcelErr && (
+                <div className="bg-status-danger/10 border border-status-danger/20 text-status-danger text-body-sm rounded-xl px-5 py-4 mb-4 flex items-center gap-3">
+                  <XCircle className="w-5 h-5 flex-shrink-0" />
+                  <span>{parcelErr}</span>
+                </div>
+              )}
+              {parcelMsg && (
+                <div className="bg-status-success/10 border border-status-success/20 text-status-success text-body-sm rounded-xl px-5 py-4 mb-4 flex items-center gap-3">
+                  <CheckCircle className="w-5 h-5 flex-shrink-0" />
+                  <span>{parcelMsg}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loggingParcel || !parcelUnitId || !parcelDescription.trim()}
+                className="w-full bg-accent-600 hover:bg-accent-700 disabled:opacity-50 text-white rounded-xl py-5 text-body font-semibold transition-all flex items-center justify-center gap-2 min-h-[56px]"
+              >
+                <PackagePlus className="w-6 h-6" />
+                {loggingParcel ? 'Logging...' : 'Log Arrival'}
+              </button>
+            </form>
+          </>
+        )}
 
         {mode === 'scan' && (
           <>

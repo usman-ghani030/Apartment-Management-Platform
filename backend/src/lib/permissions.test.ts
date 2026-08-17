@@ -79,6 +79,42 @@ describe('Permission system', () => {
     });
   });
 
+  describe('Analytics permissions (Phase 7)', () => {
+    it('COMMITTEE_ADMIN can read analytics', () => {
+      expect(can('COMMITTEE_ADMIN', 'read', 'analytics')).toBe(true);
+    });
+
+    it('SUPER_ADMIN can read analytics', () => {
+      expect(can('SUPER_ADMIN', 'read', 'analytics')).toBe(true);
+    });
+
+    it('RESIDENT cannot read analytics', () => {
+      expect(can('RESIDENT', 'read', 'analytics')).toBe(false);
+    });
+
+    it('SECURITY_GUARD cannot read analytics', () => {
+      expect(can('SECURITY_GUARD', 'read', 'analytics')).toBe(false);
+    });
+  });
+
+  describe('Vendor rating permissions (Phase 7)', () => {
+    it('COMMITTEE_ADMIN can read vendor ratings', () => {
+      expect(can('COMMITTEE_ADMIN', 'read', 'vendor')).toBe(true);
+    });
+
+    it('SUPER_ADMIN can read vendor ratings', () => {
+      expect(can('SUPER_ADMIN', 'read', 'vendor')).toBe(true);
+    });
+
+    it('RESIDENT cannot read vendor ratings', () => {
+      expect(can('RESIDENT', 'read', 'vendor')).toBe(false);
+    });
+
+    it('SECURITY_GUARD cannot read vendor ratings', () => {
+      expect(can('SECURITY_GUARD', 'read', 'vendor')).toBe(false);
+    });
+  });
+
   describe('Role hierarchy', () => {
     it('SUPER_ADMIN can do anything COMMITTEE_ADMIN can do', () => {
       expect(can('SUPER_ADMIN', 'delete', 'building')).toBe(true);

@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import {
   Building2, Users, FileText, CreditCard, LogOut, Bell,
   CalendarRange, BarChart3, Folder, Clock, Home, UserPlus,
-  QrCode, Scan, Menu, X, Package, Shield,
+  QrCode, Scan, Menu, X, Package, Shield, PieChart,
 } from 'lucide-react';
 import { auth, ApiError, apiGet } from '@/lib/api';
 import type { AuthResponse } from '@apartment/shared';
@@ -87,6 +87,7 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
       { icon: Folder, label: 'Documents', href: '/dashboard/admin/documents' },
       { icon: Package, label: 'Packages', href: '/dashboard/admin/parcels' },
       { icon: Clock, label: 'Audit trail', href: '/dashboard/admin/audit-log' },
+      { icon: PieChart, label: 'Analytics', href: '/dashboard/admin/analytics' },
     ],
   },
 ];

@@ -115,6 +115,7 @@ router.post('/signup', async (req, res, next) => {
       user: userProfile,
       memberships: [membershipProfile],
       accessToken,
+      refreshToken,
     };
 
     sendSuccess(res, response, 201);
@@ -183,6 +184,7 @@ router.post('/login', async (req, res, next) => {
       user: userProfile,
       memberships: membershipProfiles,
       accessToken,
+      refreshToken,
     };
 
     sendSuccess(res, response);
@@ -247,12 +249,15 @@ router.get('/me', requireAuth, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
-
-// ── POST /api/v1/auth/refresh ──────────────────────────────────────────────
+});// ── POST /api/v1/auth/refresh ──────────────────────────────────────────────
+// Accepts the refresh token from the `x-refresh-token` header (cross-origin safe,
+// stored client-side) or the httpOnly `refreshToken` cookie. Returns the new
+// access + refresh tokens in the body so the client can persist them.
 router.post('/refresh', async (req, res, next) => {
   try {
-    const token = req.cookies?.refreshToken;
+    const token =
+      (req.headers['x-refresh-token'] as string | undefined) ||
+      req.cookies?.refreshToken;
     if (!token) {
       throw new AppError(ErrorCodes.UNAUTHORIZED, 401, 'Refresh token required');
     }
@@ -282,10 +287,12 @@ router.post('/refresh', async (req, res, next) => {
       path: '/',
     });
 
-    sendSuccess(res, { message: 'Token refreshed' });
-  } catch (err) {
-    next(err);
-  }
+    sendSuccess(res, {
+      message: 'Token refreshed',
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+    });
+  } catch (err) { next(err); }
 });
 
 // ── GET /api/v1/auth/memberships ───────────────────────────────────────────

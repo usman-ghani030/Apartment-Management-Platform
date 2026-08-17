@@ -20,6 +20,8 @@ export type AuthResource =
   | 'poll'
   | 'document'
   | 'parcel'
+  | 'vendor'
+  | 'analytics'
   | 'audit_log';
 
 /**
@@ -132,6 +134,14 @@ const PERMISSION_MATRIX: Record<AuthResource, Partial<Record<AuthAction, Role[]>
     delete: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
   },
   audit_log: {
+    read: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
+  },
+  // Phase 7: vendor ratings — admins read/aggregate, residents/guards don't
+  vendor: {
+    read: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
+  },
+  // Phase 7: analytics dashboard — admins only
+  analytics: {
     read: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
   },
 };

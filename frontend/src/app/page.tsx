@@ -9,7 +9,9 @@ import {
   CheckCircle, ChevronRight, ChevronDown, ArrowRight,
   Menu, X, Wrench, Star, Check, Quote, BadgeCheck,
   Facebook, Twitter, Instagram, Linkedin, Sparkles,
+  LayoutDashboard,
 } from 'lucide-react';
+import { auth, getAuthToken } from '@/lib/api';
 
 
 // ── ScrollReveal ──────────────────────────────────────────────────────────
@@ -343,6 +345,31 @@ export default function Home() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [activeSection, setActiveSection] = useState('');
+  // Logged-in state so the header/hero don't force a re-login when returning from the dashboard
+  const [authState, setAuthState] = useState<'loading' | 'guest' | 'loggedIn'>('loading');
+  const [dashboardHref, setDashboardHref] = useState('/dashboard/resident');
+
+  useEffect(() => {
+    // If there's no stored token, we're a guest — no network call needed.
+    if (!getAuthToken()) {
+      setAuthState('guest');
+      return;
+    }
+    let cancelled = false;
+    auth.me()
+      .then((data) => {
+        if (cancelled) return;
+        const role = data.memberships[0]?.role;
+        setDashboardHref(
+          role === 'COMMITTEE_ADMIN' || role === 'SUPER_ADMIN' ? '/dashboard/admin'
+          : role === 'SECURITY_GUARD' ? '/dashboard/guard'
+          : '/dashboard/resident'
+        );
+        setAuthState('loggedIn');
+      })
+      .catch(() => { if (!cancelled) setAuthState('guest'); });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -437,18 +464,30 @@ export default function Home() {
               );
             })}
             <div className="flex items-center gap-3 ml-6">
-              <button
-                onClick={() => router.push('/login')}
-                className="px-5 py-2 rounded-full text-body-sm font-semibold text-white bg-accent-600 hover:bg-accent-700 hover:-translate-y-px transition-all shadow-button hover:shadow-md"
-              >
-                Log in
-              </button>
-              <button
-                onClick={() => router.push('/signup')}
-                className="px-5 py-2 rounded-full text-body-sm font-semibold text-accent-600 border-2 border-accent-600 hover:bg-accent-600 hover:text-white hover:-translate-y-px transition-all"
-              >
-                Sign up
-              </button>
+              {authState === 'loggedIn' ? (
+                <button
+                  onClick={() => router.push(dashboardHref)}
+                  className="inline-flex items-center gap-2 px-5 py-2 rounded-full text-body-sm font-semibold text-white bg-accent-600 hover:bg-accent-700 hover:-translate-y-px transition-all shadow-button hover:shadow-md"
+                >
+                  <LayoutDashboard className="w-4 h-4" />
+                  Dashboard
+                </button>
+              ) : authState === 'loading' ? null : (
+                <>
+                  <button
+                    onClick={() => router.push('/login')}
+                    className="px-5 py-2 rounded-full text-body-sm font-semibold text-white bg-accent-600 hover:bg-accent-700 hover:-translate-y-px transition-all shadow-button hover:shadow-md"
+                  >
+                    Log in
+                  </button>
+                  <button
+                    onClick={() => router.push('/signup')}
+                    className="px-5 py-2 rounded-full text-body-sm font-semibold text-accent-600 border-2 border-accent-600 hover:bg-accent-600 hover:text-white hover:-translate-y-px transition-all"
+                  >
+                    Sign up
+                  </button>
+                </>
+              )}
             </div>
           </nav>
 
@@ -481,8 +520,14 @@ export default function Home() {
               );
             })}
             <hr className="border-gray-200" />
-            <button onClick={() => router.push('/login')} className="w-full text-left text-body text-gray-700 hover:text-gray-900 py-2.5 px-3 transition-colors">Log in</button>
-            <button onClick={() => router.push('/signup')} className="w-full btn-primary justify-center">Sign up</button>
+            {authState === 'loggedIn' ? (
+              <button onClick={() => router.push(dashboardHref)} className="w-full btn-primary justify-center">Dashboard</button>
+            ) : (
+              <>
+                <button onClick={() => router.push('/login')} className="w-full text-left text-body text-gray-700 hover:text-gray-900 py-2.5 px-3 transition-colors">Log in</button>
+                <button onClick={() => router.push('/signup')} className="w-full btn-primary justify-center">Sign up</button>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -519,16 +564,18 @@ export default function Home() {
               <FadeIn delay={300}>
                 <div className="mt-8">
                   <button
-                    onClick={() => router.push('/signup')}
+                    onClick={() => router.push(authState === 'loggedIn' ? dashboardHref : '/signup')}
                     className="group inline-flex items-center gap-2 px-7 py-3.5 rounded-full text-body-sm font-semibold text-white bg-accent-600 hover:bg-accent-700 transition-all shadow-button hover:shadow-lg hover:-translate-y-0.5"
                   >
-                    Get started free
+                    {authState === 'loggedIn' ? 'Open your dashboard' : 'Get started free'}
                     <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                   </button>
-                  <p className="flex items-center gap-1.5 text-caption text-gray-700 mt-3">
-                    <Check className="w-3.5 h-3.5 text-accent-500" />
-                    14-day free trial · No credit card required
-                  </p>
+                  {authState !== 'loggedIn' && (
+                    <p className="flex items-center gap-1.5 text-caption text-gray-700 mt-3">
+                      <Check className="w-3.5 h-3.5 text-accent-500" />
+                      14-day free trial · No credit card required
+                    </p>
+                  )}
 
                   {/* Social proof */}
                   <div className="flex items-center gap-3 mt-8">

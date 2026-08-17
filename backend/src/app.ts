@@ -90,6 +90,14 @@ app.use('/api/v1/payments', paymentRoutes);
 import auditLogRoutes from './routes/audit-log';
 app.use('/api/v1/audit-logs', auditLogRoutes);
 
+// ── Settings Routes (per-society settings, dues reminders) ─────────────────
+import settingsRoutes from './routes/settings';
+app.use('/api/v1/settings', settingsRoutes);
+
+// ── Analytics Routes (admin-only aggregate view) ───────────────────────────
+import analyticsRoutes from './routes/analytics';
+app.use('/api/v1/analytics', analyticsRoutes);
+
 // ── Error Handler (must be last) ──────────────────────────────────────────
 app.use(errorHandler);
 

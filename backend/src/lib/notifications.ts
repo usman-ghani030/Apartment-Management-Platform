@@ -7,6 +7,7 @@ type NotificationEvent =
   | { type: 'TICKET_STATUS_CHANGED'; ticketId: string; title: string; societyId: string; oldStatus: string; newStatus: string }
   | { type: 'TICKET_COMMENT_ADDED'; ticketId: string; societyId: string; authorId: string }
   | { type: 'PARCEL_ARRIVED'; parcelId: string; societyId: string; unitId: string; description: string }
+  | { type: 'DUE_REMINDER'; invoiceId: string; invoiceNumber: string; societyId: string; title: string; amount: number; dueDate: string; daysBefore: number }
   | { type: 'PAYMENT_CONFIRMED'; invoiceId: string; societyId: string; amount: number; txnRef: string | null };
 
 /**
@@ -77,6 +78,17 @@ export async function sendNotification(event: NotificationEvent): Promise<void> 
         entityType: 'parcel',
         entityId: event.parcelId,
         after: { description: event.description, unitId: event.unitId },
+      });
+      break;
+
+    case 'DUE_REMINDER':
+      await logAudit({
+        societyId: event.societyId,
+        actorUserId: null,
+        action: 'NOTIFICATION_DUE_REMINDER',
+        entityType: 'invoice',
+        entityId: event.invoiceId,
+        after: { invoiceNumber: event.invoiceNumber, title: event.title, amount: event.amount, dueDate: event.dueDate, daysBefore: event.daysBefore },
       });
       break;
 

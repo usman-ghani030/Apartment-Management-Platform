@@ -118,6 +118,15 @@ export default function ResidentInvoicesPage() {
 
   const totalDue = invoices.filter((i) => i.status === 'ISSUED' || i.status === 'OVERDUE').reduce((sum, i) => sum + i.amount, 0);
 
+  // Whole days between now and the due date (negative = overdue).
+  const daysUntilDue = (dueDate: string) => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const due = new Date(dueDate);
+    due.setHours(0, 0, 0, 0);
+    return Math.round((due.getTime() - now.getTime()) / 86400000);
+  };
+
   if (loading) return <div className="min-h-screen bg-white text-gray-900 flex items-center justify-center "><div className="animate-spin h-8 w-8 border-2 border-accent-500 border-t-transparent rounded-full" /></div>;
 
   return (
@@ -175,6 +184,13 @@ export default function ResidentInvoicesPage() {
                     <div className="flex items-center gap-2 mb-1">
                       <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${STATUS_STYLES[inv.status] || ''}`}>{inv.status}</span>
                       <span className="text-[10px] text-gray-700 font-mono">{inv.invoiceNumber}</span>
+                      {(inv.status === 'ISSUED' || inv.status === 'OVERDUE') && (() => {
+                        const d = daysUntilDue(inv.dueDate);
+                        if (inv.status === 'OVERDUE' || d < 0) {
+                          return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-500/10 text-red-500">Overdue by {Math.abs(d)} day{Math.abs(d) === 1 ? '' : 's'}</span>;
+                        }
+                        return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600">Due in {d} day{d === 1 ? '' : 's'}</span>;
+                      })()}
                     </div>
                     <h3 className="font-medium text-sm">{inv.title}</h3>
                     <p className="text-xs text-gray-700 mt-0.5">Unit {inv.unitNumber} · Due {new Date(inv.dueDate).toLocaleDateString()}{inv.periodStart && inv.periodEnd ? ` · ${new Date(inv.periodStart).toLocaleDateString()} - ${new Date(inv.periodEnd).toLocaleDateString()}` : ''}</p>

@@ -208,6 +208,8 @@ model Society {
   name      String
   slug      String   @unique
   timezone  String   @default("UTC")
+  // Phase 7: how many days before the due date to send the automated dues reminder
+  dueReminderDays Int      @default(3)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -227,6 +229,7 @@ model Society {
   documentFolders DocumentFolder[]
   documents       Document[]
   parcels      Parcel[]
+  invoiceReminders InvoiceReminder[]
   auditLogs    AuditLog[]
 }
 
@@ -282,6 +285,7 @@ model User {
   notices      Notice[]
   readReceipts NoticeReadReceipt[]
   tickets      Ticket[]
+  ticketsRated Ticket[] @relation("TicketRatedBy")
   ticketComments TicketComment[]
   bookings      Booking[]
   visitorPasses VisitorPass[]
@@ -370,6 +374,7 @@ model Invoice {
   deletedAt     DateTime?
 
   payments Payment[]
+  invoiceReminders InvoiceReminder[]
 
   @@index([societyId, status])
   @@index([societyId, unitId])
@@ -432,6 +437,15 @@ model Ticket {
   status      TicketStatus @default(OPEN)
   assignedTo  String?       // Vendor name/contact placeholder
   photosUrl   String?       // Comma-separated URLs or JSON — Cloudinary integration deferred
+  // Phase 7 vendor ratings: captured when the ticket transitions to CLOSED
+  rating        Int?        // 1-5 stars
+  ratingComment String?
+  ratedById     String?
+  ratedBy       User?       @relation("TicketRatedBy", fields: [ratedById], references: [id])
+  ratedAt       DateTime?
+  // Phase 7 analytics: set once when the ticket transitions to CLOSED (unlike
+  // updatedAt, which also changes on re-rating) — enables accurate resolution time
+  closedAt    DateTime?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   deletedAt   DateTime?
@@ -492,6 +506,25 @@ model Parcel {
   @@index([societyId, status])
   @@index([unitId])
   @@index([societyId, createdAt])
+}
+
+// ── Automated Dues Reminders (Phase 7) ─────────────────────────────────────
+// Records each automated reminder sent for an invoice. The unique pair
+// (invoiceId, dueDate) means a reminder is sent at most once per due date;
+// if the admin extends the due date, a fresh reminder can fire for the new date.
+model InvoiceReminder {
+  id        String   @id @default(uuid())
+  societyId String
+  society   Society  @relation(fields: [societyId], references: [id])
+  invoiceId String
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id])
+  dueDate   DateTime // snapshot of the invoice due date this reminder targeted
+  daysBefore Int     // how many days before the due date this reminder was sent
+  sentAt    DateTime @default(now())
+
+  @@unique([invoiceId, dueDate])
+  @@index([societyId])
+  @@index([invoiceId])
 }
 
 model AuditLog {

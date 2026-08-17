@@ -147,6 +147,10 @@ export const UpdateTicketSchema = z.object({
   category: z.string().min(1).optional(),
   status: z.enum(TicketStatusValues).optional(),
   assignedTo: z.string().optional().nullable(),
+  // Phase 7 vendor ratings: 1-5 stars + optional comment, captured when the
+  // ticket transitions to CLOSED.
+  rating: z.number().int().min(1).max(5).optional(),
+  ratingComment: z.string().max(500).optional().nullable(),
 });
 export type UpdateTicketInput = z.infer<typeof UpdateTicketSchema>;
 
@@ -168,10 +172,26 @@ export interface TicketResponse {
   status: TicketStatus;
   assignedTo: string | null;
   photosUrl: string | null;
+  // Phase 7 vendor ratings
+  rating: number | null;
+  ratingComment: string | null;
+  ratedById: string | null;
+  ratedByName: string | null;
+  ratedAt: string | null;
   createdAt: string;
   updatedAt: string;
   commentCount: number;
   comments?: TicketCommentResponse[];
+}
+
+/**
+ * Aggregated vendor rating (Phase 7 slice 3). Grouped by the ticket's
+ * assigned vendor name; avgRating is rounded to one decimal.
+ */
+export interface VendorRatingSummary {
+  vendorName: string;
+  avgRating: number;
+  count: number;
 }
 
 export interface TicketCommentResponse {

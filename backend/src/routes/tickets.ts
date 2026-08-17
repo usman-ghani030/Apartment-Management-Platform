@@ -44,8 +44,21 @@ const uploadTicketPhoto = multer({
 });
 
 type TicketWithIncludes = Prisma.TicketGetPayload<{
-  include: { resident: { select: { name: true } }; unit: { select: { unitNumber: true } }; _count: { select: { comments: true } } };
+  include: {
+    resident: { select: { name: true } };
+    unit: { select: { unitNumber: true } };
+    ratedBy: { select: { name: true } };
+    _count: { select: { comments: true } };
+  };
 }>;
+
+// Every ticket query includes the rating author so responses can surface it.
+const TICKET_INCLUDES = {
+  resident: { select: { name: true } },
+  unit: { select: { unitNumber: true } },
+  ratedBy: { select: { name: true } },
+  _count: { select: { comments: true } },
+} as const;
 
 type CommentWithAuthor = Prisma.TicketCommentGetPayload<{ include: { author: { select: { name: true } } } }>;
 
@@ -63,6 +76,11 @@ function formatTicket(t: TicketWithIncludes): TicketResponse {
     status: t.status as import('@apartment/shared').TicketStatus,
     assignedTo: t.assignedTo,
     photosUrl: t.photosUrl,
+    rating: t.rating,
+    ratingComment: t.ratingComment,
+    ratedById: t.ratedById,
+    ratedByName: t.ratedBy?.name ?? null,
+    ratedAt: t.ratedAt?.toISOString() ?? null,
     createdAt: t.createdAt.toISOString(),
     updatedAt: t.updatedAt.toISOString(),
     commentCount: t._count.comments,
@@ -97,11 +115,7 @@ router.post('/', requireAuth, loadMembership, async (req, res, next) => {
         description: input.description,
         category: input.category,
       },
-      include: {
-        resident: { select: { name: true } },
-        unit: { select: { unitNumber: true } },
-        _count: { select: { comments: true } },
-      },
+      include: TICKET_INCLUDES,
     });
 
     await logAudit({
@@ -137,7 +151,7 @@ router.get('/', requireAuth, loadMembership, async (req, res, next) => {
 
     const tickets = await prisma.ticket.findMany({
       where,
-      include: { resident: { select: { name: true } }, unit: { select: { unitNumber: true } }, _count: { select: { comments: true } } },
+      include: TICKET_INCLUDES,
       orderBy: { createdAt: 'desc' },
       take: limit + 1,
     });
@@ -149,6 +163,46 @@ router.get('/', requireAuth, loadMembership, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── GET /api/v1/tickets/vendor-ratings ─────────────────────────────────────
+// Admin-only aggregated vendor ratings (Phase 7 slice 3). Grouped by the
+// ticket's assigned vendor name; used wherever vendors are shown or selected
+// for assignment. Route order matters: this must precede GET /:id.
+router.get(
+  '/vendor-ratings',
+  requireAuth,
+  loadMembership,
+  requireRole('read', 'vendor'),
+  async (req, res, next) => {
+    try {
+      const societyId = req.membership!.societyId;
+      const grouped = await prisma.ticket.groupBy({
+        by: ['assignedTo'],
+        where: {
+          societyId,
+          deletedAt: null,
+          assignedTo: { not: null },
+          rating: { not: null },
+        },
+        _avg: { rating: true },
+        _count: { rating: true },
+      });
+
+      const summaries = grouped
+        .filter((g): g is typeof g & { assignedTo: string } => !!g.assignedTo)
+        .map((g) => ({
+          vendorName: g.assignedTo,
+          avgRating: Math.round((g._avg.rating ?? 0) * 10) / 10,
+          count: g._count.rating,
+        }))
+        .sort((a, b) => b.avgRating - a.avgRating || b.count - a.count);
+
+      sendSuccess(res, summaries);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // ── GET /api/v1/tickets/:id ────────────────────────────────────────────────
 router.get('/:id', requireAuth, loadMembership, async (req, res, next) => {
   try {
@@ -157,7 +211,7 @@ router.get('/:id', requireAuth, loadMembership, async (req, res, next) => {
 
     const ticket = await prisma.ticket.findFirst({
       where: { id: req.params.id, societyId, deletedAt: null },
-      include: { resident: { select: { name: true } }, unit: { select: { unitNumber: true } }, _count: { select: { comments: true } } },
+      include: TICKET_INCLUDES,
     });
     if (!ticket) throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Ticket not found');
     if (!isAdmin && ticket.residentId !== req.user!.id) throw new AppError(ErrorCodes.FORBIDDEN, 403, 'Access denied');
@@ -207,16 +261,43 @@ router.patch('/:id', requireAuth, loadMembership, requireRole('update', 'ticket'
       }
     }
 
+    // Vendor rating (Phase 7 slice 3): a rating may only be given when the
+    // ticket is closed (or is being closed). Re-rating an already-closed
+    // ticket is allowed; rating any other state is rejected.
+    const isClosing = input.status === 'CLOSED' || existing.status === 'CLOSED';
+    if ((input.rating !== undefined || input.ratingComment !== undefined) && !isClosing) {
+      throw new AppError(ErrorCodes.VALIDATION_ERROR, 400,
+        'A rating can only be given when the ticket is closed');
+    }
+    if (input.rating !== undefined) {
+      updateData.rating = input.rating;
+      updateData.ratedById = req.user!.id;
+      updateData.ratedAt = new Date();
+    }
+    if (input.ratingComment !== undefined) {
+      updateData.ratingComment = input.ratingComment;
+    }
+
+    // Record the close timestamp once, on the transition into CLOSED (used by
+    // analytics for resolution time; unlike updatedAt it doesn't move on re-rating).
+    if (input.status === 'CLOSED' && existing.status !== 'CLOSED') {
+      updateData.closedAt = new Date();
+    }
+
     const ticket = await prisma.ticket.update({
       where: { id: req.params.id },
       data: updateData,
-      include: { resident: { select: { name: true } }, unit: { select: { unitNumber: true } }, _count: { select: { comments: true } } },
+      include: TICKET_INCLUDES,
     });
 
     await logAudit({
       societyId, actorUserId: req.user!.id, action: 'TICKET_UPDATED',
       entityType: 'ticket', entityId: ticket.id,
-      before: { status: existing.status }, after: { status: ticket.status },
+      before: { status: existing.status },
+      after: {
+        status: ticket.status,
+        ...(ticket.rating !== null ? { rating: ticket.rating, ratingComment: ticket.ratingComment ?? null } : {}),
+      },
     });
 
     if (input.status && input.status !== existing.status) {

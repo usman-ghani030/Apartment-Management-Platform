@@ -112,10 +112,66 @@
 - [x] Resident dashboard: Package quick action added
 - [x] Full test suite: 60/60 passing
 
-**Notes:**
-- Parcel photo upload via URL only (no multer upload handler yet — matches document storage pattern)
-- Guard page doesn't yet have dedicated parcel logging form (admin page covers this)
+**Notes (later session):**
+- Parcel photo upload added: `POST /api/v1/parcels/photo` (multer, JPEG/PNG/WebP/GIF, 10MB) + `GET /api/v1/parcels/photo/:filename` — admin & resident pages show thumbnails, admin form uses a real file picker
+- Guard dashboard (`/dashboard/guard`) has a Parcels tab: unit dropdown, description, optional photo upload, full-width "Log Arrival"
 - Migration needs to be applied on Railway via `prisma migrate deploy`
+
+---
+
+### Slice 2: Automated Dues Reminders ✅
+
+- [x] Prisma schema: `Society.dueReminderDays Int @default(3)` + `InvoiceReminder` table (unique on invoiceId+dueDate so each due date is reminded exactly once)
+- [x] Migration `20260817000000_add_due_reminders` (additive only)
+- [x] `DUE_REMINDER` notification event (audit trail + console, same pattern as other events)
+- [x] BullMQ installed; `backend/src/queue/` — daily repeatable job (09:00 UTC, `DUE_REMINDER_CRON` override) + resilient worker (safe "disabled" mode when Redis is down; API unaffected)
+- [x] `backend/src/lib/due-reminders.ts` — pure selection logic: unpaid (ISSUED/OVERDUE) invoices due within each society's window, one reminder per (invoice, dueDate), per-invoice error isolation, optional societyId for tenant-scoped runs
+- [x] Settings API: `GET /api/v1/settings`, `PATCH /api/v1/settings` (admin-only, Zod 1–30 days, audit logged), `POST /api/v1/settings/run-reminders` (admin-only manual trigger, tenant-scoped, audit logged)
+- [x] Queue wired into `index.ts` with graceful shutdown; started after `app.listen`
+- [x] Admin invoices page: "Automated dues reminders" card (days-before input + Save + "Send reminders now")
+- [x] Resident invoices page: "Due in X days" / "Overdue by X days" badges on unpaid invoices
+- [x] Tests: 80/80 passing (9 new — reminder selection logic + settings route auth gates)
+- [x] Live-verified: GET/PATCH settings, manual trigger sent 1 reminder, second run idempotent (0), audit entries written, queue scheduler registered on boot
+
+**Notes:**
+- On Railway, add a Redis service and set `REDIS_URL` for the scheduled job to fire; without it the queue stays disabled but manual trigger still works
+- `DUE_REMINDER_CRON` env var (cron format, default `0 9 * * *`) optional
+
+---
+
+### Slice 3: Vendor Ratings ✅
+
+- [x] Prisma schema: `Ticket.rating Int?` (1–5), `ratingComment`, `ratedById`, `ratedAt` + `User.ticketsRated` relation + index `(assignedTo, rating)`; migration `20260817000001_add_vendor_ratings` (additive only)
+- [x] Shared: `UpdateTicketSchema` gains `rating` + `ratingComment`; `TicketResponse` gains rating/ratedBy fields; new `VendorRatingSummary` type
+- [x] Permissions: new `vendor` resource (`read`: SUPER_ADMIN, COMMITTEE_ADMIN)
+- [x] `PATCH /tickets/:id` — rating only allowed when the ticket is (or is becoming) CLOSED; re-rating a closed ticket allowed; saves `ratedById` + `ratedAt`; audit log includes rating snapshot
+- [x] `GET /api/v1/tickets/vendor-ratings` — admin-only aggregation (groupBy assignedTo, avg rounded to 1dp, sorted by avg then count); placed before `GET /:id`
+- [x] Admin tickets page: "Close & rate" flow (5-star picker + optional comment + confirm), vendor ratings summary panel, inline average rating while typing an assignee name, star chip on rated cards, existing-rating display on closed tickets
+- [x] Tests: 91/91 passing (11 new — rating rules, aggregation endpoint shape, admin gate, permission matrix)
+- [x] Live-verified: create → assign → rate-while-open rejected (400) → close with 4★ + comment (ratedByName returned) → aggregation shows `ABC Plumbing 4.0 (1)` → cleaned up
+
+**Notes:**
+- Ratings aggregate by the free-text `assignedTo` vendor name (there is no vendor entity); identical names aggregate together
+- Migration needs `prisma migrate deploy` on Railway
+
+---
+
+### Slice 4: Admin Analytics Dashboard ✅
+
+- [x] Prisma: `Ticket.closedAt` (set once on the transition into CLOSED — unlike `updatedAt`, it doesn't move on re-rating); migration `20260817000002_add_ticket_closed_at` (additive only)
+- [x] Permissions: new `analytics` resource (`read`: SUPER_ADMIN, COMMITTEE_ADMIN)
+- [x] `GET /api/v1/analytics` (admin-only, tenant-scoped, read-only aggregates):
+  - `duesCollection` — last 6 monthly buckets: invoiced (sum of invoice amounts due that month, excl. CANCELLED) vs collected (succeeded Payment rows by paidAt) + collection rate %
+  - `ticketResolution` — avg hours/days from createdAt → closedAt (falls back to updatedAt) across closed tickets
+  - `ticketVolumeByCategory` — groupBy category, sorted desc
+  - `vendorPerformance` — per vendor: avg rating, rating count, closed-ticket volume (merged from two groupBys)
+- [x] Frontend `/dashboard/admin/analytics` — 4 summary tiles, CSS-only collection-rate bar chart (no chart lib added), category progress bars, vendor performance list with stars; sidebar link under Finance & Records (PieChart icon)
+- [x] Tests: 99/99 passing (8 new — analytics aggregation shape, empty-data handling, admin gate, permission matrix)
+- [x] Live-verified: endpoint returns real seed data (July collected Rs 50, Aug invoiced Rs 100), resident gets 403, closing a ticket sets closedAt + populates resolution/category/vendor sections → cleaned up
+
+**Notes:**
+- All analytics are read/aggregate queries over existing data — no new core entities
+- Migration needs `prisma migrate deploy` on Railway
 
 ---
 
@@ -137,3 +193,4 @@
 - Payments fall back to offline mode only when Safepay keys are absent
 - Fixed: Invite endpoint now returns `tempPassword` so admin can share with invited residents
 - `ioredis` in package.json but not wired up (token blacklisting deferred)
+- BullMQ wired for automated dues reminders (Slice 2) — needs `REDIS_URL` on Railway
