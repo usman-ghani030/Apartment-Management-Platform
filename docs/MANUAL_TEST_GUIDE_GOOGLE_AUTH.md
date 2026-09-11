@@ -111,15 +111,42 @@ Prerequisites: Scenario 1 (Google-created account)
 
 ## If the Google button doesn't appear at all
 
-- Check `frontend/.env` has `NEXT_PUBLIC_GOOGLE_CLIENT_ID` set, then **restart**
-  `npm run dev` (Next.js reads env at startup)
-- Check the GSI script loaded: DevTools → Network → `gsi/client` should be 200
-- If the button appears but errors on click, the most common cause is the
-  **Authorized JavaScript origins** in Google Cloud Console missing `http://localhost:3000`
+**The #1 cause is `NEXT_PUBLIC_GOOGLE_CLIENT_ID` missing at BUILD time.** Next.js inlines
+`NEXT_PUBLIC_*` values into the JS bundle, so setting the variable *after* a build has no
+effect until you redeploy. The second cause is the deployed origin not being authorized in
+Google Cloud Console — GSI then renders nothing and only complains in the browser console.
 
-## Production (Railway/Vercel) checklist
+### Local
+- `frontend/.env` has `NEXT_PUBLIC_GOOGLE_CLIENT_ID="...apps.googleusercontent.com"` → **restart** `npm run dev`
+- DevTools → Network → `gsi/client` should be `200`
 
-- Backend env: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-- Frontend env: `NEXT_PUBLIC_GOOGLE_CLIENT_ID`
-- Apply migration on the prod DB: `npx prisma migrate deploy`
-- Google Cloud Console → add the production origin to Authorized JavaScript origins
+### Deployed (Vercel frontend + Render backend) — do all four
+
+1. **Vercel** → project → *Settings → Environment Variables* → add, for the **Production**
+environment:
+   - `NEXT_PUBLIC_GOOGLE_CLIENT_ID` = the same OAuth client ID as `backend/.env` `/ GOOGLE_CLIENT_ID`
+   - `NEXT_PUBLIC_API_URL` = your Render backend URL, e.g. `https://your-api.onrender.com`
+     (no trailing slash)
+2. **Redeploy.** Env changes do not apply to an existing build — `NEXT_PUBLIC_*` is baked in at
+build time. Vercel → *Deployments* → ⋯ → **Redeploy** (if unsure, make sure "Use existing
+Build Cache" is unchecked).
+3. **Google Cloud Console** → *APIs & Services → Credentials → your OAuth 2.0 Client ID* →
+**Authorized JavaScript origins** must list the deployed frontend origin **exactly** — scheme
+included, no path, no trailing slash:
+   - `https://your-app.vercel.app`
+   - `http://localhost:3000` (keep, for local dev)
+
+   Authorized *redirect URIs* are **not** needed for this ID-token flow.
+4. **Render backend** env: `GOOGLE_CLIENT_ID` (used as the token audience — the endpoint
+returns 500 without it). `GOOGLE_CLIENT_SECRET` is not used by the ID-token flow. Also set
+`FRONTEND_URL` to the Vercel URL (used in password-reset links).
+
+### Which one is wrong? (symptom → cause)
+| Symptom | Cause |
+|---|---|
+| Button missing; console has `[GoogleSignIn] NEXT_PUBLIC_GOOGLE_CLIENT_ID is not set for this build` | Step 1/2 — variable missing or no redeploy |
+| Button missing **or** blank gap; console has a GSI / "origin is not allowed" error | Step 3 — deployed origin not in Authorized JavaScript origins |
+| Button shows, click fails with `Invalid or expired Google token` (401) | Step 4 — `GOOGLE_CLIENT_ID` missing/mismatched on Render |
+| Button shows, click gives "An unexpected error occurred" | `NEXT_PUBLIC_API_URL` wrong, or the backend is unreachable (check the browser Network tab) |
+
+Also: apply the DB migration on the prod database once — `npx prisma migrate deploy`.

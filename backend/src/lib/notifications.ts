@@ -17,12 +17,11 @@ type NotificationEvent =
 
 /**
  * Send a notification. In Phase 1, this logs to the audit trail and console.
- * Future phases will wire up email (Resend/Postmark) and/or push notifications.
+ * Future phases will wire up email and/or push notifications.
  *
- * To integrate a real provider later:
- * 1. Add the provider SDK (e.g., @resend/node)
- * 2. Add an email sending function here
- * 3. Call it alongside the audit log
+ * Email must go through the shared provider (ADR 004): import `sendEmail` from
+ * `./email` and call it alongside the audit log — never a provider SDK directly,
+ * so a future provider switch stays contained.
  */
 export async function sendNotification(event: NotificationEvent): Promise<void> {
   // Stub: log to console in development

@@ -64,8 +64,12 @@ function GuardSidebar({
       >
         {/* Logo */}
         <div className="h-14 flex items-center gap-3 px-5 border-b border-gray-200 flex-shrink-0">
-          <img src="/logo3.png" alt="OmniHome" className="h-10 w-auto object-contain flex-shrink-0" />
-          <span className="text-body-sm font-semibold text-gray-900">Security Gate</span>
+          {/* logo3.png is square with transparent padding — crop it so the wrap-around
+              padding doesn't eat the sidebar width and cramp the wordmark */}
+          <img src="/logo3.png" alt="OmniHome" className="h-[110px] w-[72px] object-cover object-center flex-shrink-0" />
+          <span className="text-title-sm font-display text-gray-900 whitespace-nowrap">
+            Omni<span className="text-accent-600">Home</span>
+          </span>
           <button onClick={onClose} className="ml-auto p-1 rounded-lg hover:bg-gray-50 lg:hidden">
             <X className="w-4 h-4 text-gray-700" />
           </button>
@@ -204,7 +208,7 @@ export function GuardShell({ children }: { children: React.ReactNode }) {
               <Menu className="w-4.5 h-4.5 text-gray-700" />
             </button>
             <button onClick={() => router.push('/')} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-              <img src="/logo3.png" alt="OmniHome" className="h-16 w-auto object-contain" />
+              <img src="/logo3.png" alt="OmniHome" className="h-[110px] w-auto object-contain" />
               <div className="text-left">
                 <p className="text-body-sm font-semibold text-gray-900">Security Gate</p>
                 <p className="text-caption-xs text-gray-700">{society?.societyName || 'Dashboard'}</p>

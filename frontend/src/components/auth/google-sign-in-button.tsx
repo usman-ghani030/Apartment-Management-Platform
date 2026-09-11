@@ -54,9 +54,22 @@ export default function GoogleSignInButton({ onToken, disabled }: GoogleSignInBu
   onTokenRef.current = onToken;
 
   useEffect(() => {
-    if (!clientId || !buttonRef.current) return;
+    if (!clientId) {
+      // NEXT_PUBLIC_* vars are inlined at BUILD time, so an undefined value means
+      // the build didn't have it — the button can't render at all. This is the
+      // most common cause of "the Google button is missing in production".
+      console.error(
+        '[GoogleSignIn] NEXT_PUBLIC_GOOGLE_CLIENT_ID is not set for this build, so the ' +
+          'Google button is hidden. Set it in the frontend host (e.g. Vercel → Project → ' +
+          'Settings → Environment Variables, for the Production environment), then REDEPLOY — ' +
+          'NEXT_PUBLIC_* values are baked in at build time and need a fresh build.'
+      );
+      return;
+    }
+    if (!buttonRef.current) return;
 
     let cancelled = false;
+    let verifyTimer: number | undefined;
 
     const handleLoad = () => {
       if (cancelled || !window.google?.accounts?.id || !buttonRef.current) return;
@@ -73,6 +86,16 @@ export default function GoogleSignInButton({ onToken, disabled }: GoogleSignInBu
         text: 'continue_with',
         width: buttonRef.current.clientWidth || 320,
       });
+
+      // GSI fails *silently* when this origin isn't listed in the OAuth client's
+      // "Authorized JavaScript origins": it only logs to the browser console and
+      // renders nothing, leaving a blank gap. Detect that and show a visible
+      // message rather than an invisible button.
+      verifyTimer = window.setTimeout(() => {
+        if (!cancelled && buttonRef.current && buttonRef.current.childElementCount === 0) {
+          setFailed(true);
+        }
+      }, 1500);
     };
 
     // Reuse the script tag if another page already loaded it
@@ -93,6 +116,7 @@ export default function GoogleSignInButton({ onToken, disabled }: GoogleSignInBu
 
     return () => {
       cancelled = true;
+      if (verifyTimer) window.clearTimeout(verifyTimer);
     };
   }, [clientId]);
 

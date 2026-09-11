@@ -37,6 +37,34 @@ import type { AuthResponse, MembershipProfile, UserProfile, GoogleAuthResponse }
 
 const router = Router();
 
+interface OutboundEmail {
+  subject: string;
+  html: string;
+  text: string;
+}
+
+/**
+ * Send through the EmailProvider (ADR 004) and translate a delivery failure into
+ * a 502 EMAIL_SEND_FAILED — a caller must never receive a "check your inbox"
+ * success for an email that failed to leave the server. The provider scrubs SMTP
+ * credentials from its error message, so the log line is safe.
+ */
+async function deliverEmail(to: string, email: OutboundEmail, kind: string): Promise<void> {
+  try {
+    await sendEmail({ to, subject: email.subject, html: email.html, text: email.text });
+  } catch (err) {
+    console.error(
+      `[forgot-password] ${kind} email delivery failed:`,
+      err instanceof Error ? err.message : err
+    );
+    throw new AppError(
+      ErrorCodes.EMAIL_SEND_FAILED,
+      502,
+      'We could not send the email right now. Please try again in a moment.'
+    );
+  }
+}
+
 // ── POST /api/v1/auth/signup ────────────────────────────────────────────────
 // Creates a Society + first COMMITTEE_ADMIN User + Membership in one transaction.
 // This is tenant onboarding — the entry point for every new customer.
@@ -343,15 +371,17 @@ router.post('/google', async (req, res, next) => {
 });
 
 // ── POST /api/v1/auth/forgot-password ──────────────────────────────────────
-// Requests a password reset link. ALWAYS returns the same generic response
-// whether or not the email exists (no account enumeration), and never reveals
-// account type. Behavior by account:
+// Requests a password reset link (delivered through the EmailProvider — ADR
+// 004, Gmail SMTP via Nodemailer). Behavior by account:
 //   • password-having account → single-use, time-limited reset link via email
 //   • Google-only account (passwordHash = null) → informational email pointing
 //     at Google Sign-In — no reset link, no token, no password is ever created
-//   • unknown email → nothing is created or sent
-// Rate-limited per email and per IP (both keys counted identically so the
-// limit itself can't be used to enumerate).
+//   • unknown email → 404 EMAIL_NOT_FOUND (nothing created or sent)
+// Rate-limited per email and per IP.
+//
+// NOTE: if the SMTP send fails we surface EMAIL_SEND_FAILED rather than a
+// success message, so the user is never told to "check your inbox" for an email
+// that never left the server. The reset token stays valid for a retry.
 router.post('/forgot-password', async (req, res, next) => {
   try {
     const input = ForgotPasswordSchema.parse(req.body);
@@ -376,11 +406,7 @@ router.post('/forgot-password', async (req, res, next) => {
     if (!user.passwordHash) {
       const loginUrl = `${frontendUrl}/login`;
       const googleEmail = buildGoogleOnlyAccountEmail(loginUrl);
-      try {
-        await sendEmail({ to: user.email, subject: googleEmail.subject, html: googleEmail.html, text: googleEmail.text });
-      } catch (err) {
-        console.error('[forgot-password] failed to send Google-only email:', err instanceof Error ? err.message : err);
-      }
+      await deliverEmail(user.email, googleEmail, 'Google-only');
       sendSuccess(res, { message: 'This account uses Google Sign-In. Please sign in with Google instead.', googleOnly: true });
       return;
     }
@@ -402,11 +428,7 @@ router.post('/forgot-password', async (req, res, next) => {
 
     const resetUrl = `${frontendUrl}/reset-password?token=${encodeURIComponent(raw)}`;
     const email = buildPasswordResetEmail(resetUrl);
-    try {
-      await sendEmail({ to: user.email, subject: email.subject, html: email.html, text: email.text });
-    } catch (err) {
-      console.error('[forgot-password] failed to send reset email:', err instanceof Error ? err.message : err);
-    }
+    await deliverEmail(user.email, email, 'reset');
 
     sendSuccess(res, { message: 'A password reset link has been sent to your email. Check your inbox.' });
   } catch (err) {

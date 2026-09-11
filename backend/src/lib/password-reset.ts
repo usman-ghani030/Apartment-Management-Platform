@@ -12,10 +12,13 @@ export function hashResetToken(raw: string): string {
   return createHash('sha256').update(raw).digest('hex');
 }
 
+export function getResetTokenTtlMinutes(): number {
+  const minutes = parseInt(process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES || '45', 10);
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : 45;
+}
+
 export function getResetTokenTtlMs(): number {
-  const minutes = parseInt(process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES || '60', 10);
-  const safe = Number.isFinite(minutes) && minutes > 0 ? minutes : 60;
-  return safe * 60 * 1000;
+  return getResetTokenTtlMinutes() * 60 * 1000;
 }
 
 // ── Email templates ─────────────────────────────────────────────────────────
@@ -26,12 +29,13 @@ export function getResetTokenTtlMs(): number {
 
 export function buildPasswordResetEmail(resetUrl: string): { subject: string; html: string; text: string } {
   const subject = 'Reset your OmniHome password';
+  const minutes = getResetTokenTtlMinutes();
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
       <h2 style="color: #1f2937;">Reset your password</h2>
       <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
         We received a request to reset the password for your OmniHome account.
-        This link is valid for 60 minutes and can only be used once.
+        This link is valid for ${minutes} minutes and can only be used once.
       </p>
       <p style="text-align: center; margin: 28px 0;">
         <a href="${resetUrl}" style="background: #4f46e5; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">
@@ -44,7 +48,7 @@ export function buildPasswordResetEmail(resetUrl: string): { subject: string; ht
       </p>
     </div>
   `;
-  const text = `Reset your OmniHome password\n\nWe received a request to reset the password for your OmniHome account. This link is valid for 60 minutes and can only be used once:\n\n${resetUrl}\n\nIf you didn't request this, you can safely ignore this email.`;
+  const text = `Reset your OmniHome password\n\nWe received a request to reset the password for your OmniHome account. This link is valid for ${minutes} minutes and can only be used once:\n\n${resetUrl}\n\nIf you didn't request this, you can safely ignore this email.`;
   return { subject, html, text };
 }
 

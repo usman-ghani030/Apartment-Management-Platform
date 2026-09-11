@@ -24,7 +24,7 @@ A multi-tenant SaaS platform that replaces WhatsApp, paper logs, and spreadsheet
 | AI Service | Python + FastAPI (separate service, added Phase 7+) |
 | AI SDK | Vercel AI SDK / OpenAI Agents SDK |
 | Payments | Safepay |
-| Deployment (later, NOT now) | Vercel (frontend) + Railway (backend) for MVP, migrate to AWS later |
+| Deployment | Vercel (frontend) + Render (backend), migrate to AWS later |
 
 **Do not set up deployment infrastructure until explicitly instructed.** Development happens locally / in dev environments until the whole phased build is complete.
 
@@ -272,7 +272,7 @@ Added based on competitive research (Nizam). Sequenced before the AI layer for t
 
 ## 13. Explicit Non-Goals for Now
 
-- No deployment/infra setup (Vercel/Railway/AWS) until all phases above are functionally complete and explicitly requested.
+- No further infra changes (e.g. AWS migration) until explicitly requested. Frontend is live on Vercel, backend is live on Render.
 - No native mobile app — web-responsive only, PWA consideration deferred.
 - No vendor self-service portal in MVP (vendors are referenced by name/contact until Phase 4+ decides otherwise).
 - No premature multi-region / horizontal scaling work — single-region Postgres is fine until there's real load.
@@ -295,7 +295,7 @@ Added based on competitive research (Nizam). Sequenced before the AI layer for t
 
 - [x] **Storage: Cloudinary**, decided for MVP (easier setup, built-in image transforms for ticket photos, generous free tier). See `docs/adr/002-storage-provider.md`. **Requirement**: implement behind a `backend/prisma`-adjacent `StorageProvider` interface (`upload`, `getUrl`, `delete`) in Phase 0/1 — no feature calls the Cloudinary SDK directly — so migrating to S3 later per the AWS deployment plan is a contained swap, not a rewrite.
 - [x] **Auth: custom JWT (access + refresh) in Express**, decided for MVP. See `docs/adr/001-auth-mechanism.md`. Argon2 for password hashing, refresh tokens stored in Redis (revocable — required for auto-revoking moved-out residents), access token payload carries only `userId` (never role/societyId, since those must reflect live `Membership` state, not a stale token).
-- [x] **Notification delivery: Resend.** Chosen for password reset emails; use the same provider for all other email notifications (notices, ticket-status changes, dues reminders, vendor assignment emails) rather than introducing a second provider — one email-sending path for the whole app.
+- [x] **Notification delivery: Nodemailer via Gmail SMTP.** Switched from Resend after delivery issues. Implemented behind an `EmailProvider` interface (see ADR 004) so a future provider switch is contained, not a repeat of this one. Gmail SMTP is a pragmatic low-volume choice for now (see ADR 004 for the production-scale caveat) — use the same provider for all email notifications (notices, ticket-status changes, dues reminders, vendor assignment emails, password reset), not a second provider.
 
 ---
 
@@ -306,8 +306,9 @@ Added based on competitive research (Nizam). Sequenced before the AI layer for t
 | 2026-07-19 | Initial plan created |
 | 2026-07-19 | Added Redis usage, API conventions, soft-delete policy, local dev setup, and indexing baseline (self-review pass) |
 | 2026-07-19 | Resolved auth (custom JWT) and storage (Cloudinary) decisions; added ADR 001 and 002 |
+| 2026-07-19 | Switched backend hosting from Railway to Render |
 | 2026-07-19 | Simplified project structure: dropped Turborepo for plain npm workspaces (`frontend`, `backend`, `shared`) instead of `apps/`+`packages/` layout |
 | 2026-07-19 | Inserted new Phase 7 — Engagement & Accountability (parcel tracking, dues reminders, vendor ratings, admin analytics); AI Layer renumbered to Phase 8; payment gateway completion and email verification explicitly deferred to end of Phase 7 |
 | 2026-07-19 | Switched payment provider from Stripe to Safepay; added ADR 003 and PaymentProvider abstraction requirement |
 | 2026-07-19 | Inserted new Phase 8 — Safety, Staff & Automated Billing (SOS alerts, transfer clearance, staff management, targeted notifications, recurring billing schedule), based on Nizam competitive research; AI Layer renumbered to Phase 9 |
-| 2026-09-11 | Password reset added (forgot/reset flows, Resend email, hashed single-use tokens, Google-only account handling, tokenVersion-based session invalidation, per-email/IP rate limiting); Resend confirmed as the email provider (was an open question in §15) |
+| 2026-09-12 | Password-reset email delivery switched from Resend to Nodemailer over Gmail SMTP, behind a new `EmailProvider` abstraction (ADR 004); `resend` dependency and its env vars removed |

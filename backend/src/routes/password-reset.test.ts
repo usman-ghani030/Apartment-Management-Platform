@@ -150,6 +150,37 @@ describe('POST /api/v1/auth/forgot-password — request endpoint', () => {
     expect(prisma.passwordResetToken.create).not.toHaveBeenCalled();
   });
 
+  it('returns 502 EMAIL_SEND_FAILED (not a false success) when the EmailProvider rejects', async () => {
+    (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(passwordUser());
+    (prisma.passwordResetToken.deleteMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0 });
+    (prisma.passwordResetToken.create as ReturnType<typeof vi.fn>).mockResolvedValue(resetTokenRow());
+    // Gmail SMTP down / bad app password / daily cap hit
+    emailSend.mockRejectedValue(new Error('Gmail SMTP delivery failed: auth'));
+
+    const res = await request(app)
+      .post('/api/v1/auth/forgot-password')
+      .send({ email: 'alice@example.com' });
+
+    expect(res.status).toBe(502);
+    expect(res.body.error.code).toBe('EMAIL_SEND_FAILED');
+    expect(res.body.data).toBeNull();
+    // The user is NOT told to check an inbox that will never receive the email
+    expect(JSON.stringify(res.body)).not.toContain('has been sent');
+  });
+
+  it('returns 502 EMAIL_SEND_FAILED for the Google-only variant too', async () => {
+    (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(googleOnlyUser());
+    emailSend.mockRejectedValue(new Error('Gmail SMTP delivery failed: quota'));
+
+    const res = await request(app)
+      .post('/api/v1/auth/forgot-password')
+      .send({ email: 'alice@example.com' });
+
+    expect(res.status).toBe(502);
+    expect(res.body.error.code).toBe('EMAIL_SEND_FAILED');
+    expect(res.body.data).toBeNull();
+  });
+
   it('rejects a malformed email (400) without touching the DB', async () => {
     const res = await request(app)
       .post('/api/v1/auth/forgot-password')

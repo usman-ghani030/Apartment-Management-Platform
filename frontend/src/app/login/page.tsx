@@ -76,7 +76,7 @@ export default function LoginPage() {
 
       {/* Logo — matches home page header */}
       <a href="/" className="absolute top-8 left-8 flex items-center gap-2.5 group z-10">
-        <img src="/logo3.png" alt="OmniHome" className="h-12 w-auto object-contain group-hover:scale-105 group-hover:shadow-md transition-all" />
+        <img src="/logo3.png" alt="OmniHome" className="h-[110px] w-auto object-contain" />
         <span className="text-title-sm font-display text-gray-900">
           Omni<span className="text-accent-600">Home</span>
         </span>

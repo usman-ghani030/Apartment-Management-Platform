@@ -437,7 +437,10 @@ export default function Home() {
 
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="flex items-center gap-2.5 group flex-shrink-0">
-            <img src="/logo3.png" alt="OmniHome" className="h-[110px] w-auto object-contain group-hover:scale-105  transition-all" />
+            <img src="/logo3.png" alt="OmniHome" className="h-[110px] w-auto object-contain" />
+            <span className="text-title-sm font-display text-gray-900">
+              Omni<span className="text-accent-600">Home</span>
+            </span>
           </button>
 
           {/* Desktop nav */}

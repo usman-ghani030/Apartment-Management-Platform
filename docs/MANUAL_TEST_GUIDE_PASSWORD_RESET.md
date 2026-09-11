@@ -1,100 +1,128 @@
-# Manual Test Guide: Password Reset
+# Manual Test Guide: Password Reset (Nodemailer over Gmail SMTP)
 
-> You need **real email delivery** to verify the happy path — the reset link only exists inside the emailed message.
+> Email is sent through the `EmailProvider` abstraction using **Gmail SMTP** (ADR 004). You need **real email delivery** to verify the happy path — the reset link only exists inside the delivered message.
+>
+> Unlike the old Resend sandbox, Gmail SMTP can send to **any** address, so you are not limited to one inbox.
 
 ## Prerequisites (do this once)
 
-1. **Get a Resend API key**: sign up at https://resend.com → Dashboard → **API Keys** → *Create API Key* → copy the `re_...` value.
-2. **Decide how to send**:
-   - **Option A — Resend sandbox (easiest)**: no domain needed. Set in `backend/.env`:
-     ```
-     RESEND_API_KEY=re_...
-     EMAIL_FROM="OmniHome <onboarding@resend.dev>"
-     ```
-     The sandbox only delivers to **the inbox of the email address you signed up to Resend with** — use that address as the test account below.
-   - **Option B — your own domain**: add a domain in Resend (Dashboard → Domains → Add Domain → add the DNS records), verify it, then set `EMAIL_FROM` to an address on it (e.g. `noreply@luxesociety.com`).
-3. Restart the backend so the new env vars load:
+1. **Create a Gmail App Password** — the normal account password will NOT work over SMTP.
+   - Go to https://myaccount.google.com/apppasswords (requires 2-Step Verification to be on)
+   - Create an app password, copy the 16-character value
+2. In `backend/.env` set:
+   ```
+   GMAIL_USER="you@gmail.com"
+   GMAIL_APP_PASSWORD="abcd efgh ijkl mnop"
+   ```
+   (The sender address is `GMAIL_USER` — Gmail requires From to match the authenticated account.)
+3. Restart the backend so the env loads:
    ```bash
    docker restart apartment-backend
    ```
-4. Check the login page has a **"Forgot password?"** link under the password field (it links to `/forgot-password`).
+4. Sanity-check the transport in isolation (sends a real email to yourself):
+   ```bash
+   docker exec apartment-backend node -e "const p=process.env;console.log('GMAIL_USER set:', !!p.GMAIL_USER, '| APP_PASSWORD set:', !!p.GMAIL_APP_PASSWORD)"
+   ```
+   Both should print `true`.
+5. Confirm the backend port matches the frontend's API URL — it should be **4000** (`.env.example`, `docker-compose.yml`'s `4000:4000`, and `api.ts`'s default all agree on 4000). Check with `grep '^PORT=' backend/.env` and `curl -s -o /dev/null -w '%{http_code}\n' http://localhost:4000/api/v1/auth/login`. Check the login page has a **"Forgot password?"** link under the password field.
 
 ---
 
-## Scenario 1 — Normal password account: full reset flow
+## Scenario 1 — Normal password account: full reset flow (the main test)
 
-Prerequisites: a password account you own, e.g. the seeded `admin@sunrise.com` (password `admin123`) — or a test account on your Resend-verified inbox.
+Prerequisites: a password account whose inbox you can open, e.g. the seeded `admin@sunrise.com` (password `admin123`) — or invite/create a test account with your own Gmail address.
 
 1. Go to `http://localhost:3000/login` → click **"Forgot password?"**
-2. Enter the account's email (e.g. `admin@sunrise.com`) and click **Send reset link**
-3. Expected: a neutral message — *"If an account exists for this email, a reset link has been sent."* (same message for every email, on purpose)
-4. Open the inbox for that email. Expected: a message from OmniHome with subject **"Reset your OmniHome password"**, containing a **Reset my password** button
-5. Hover the button / copy the link. Expected: a URL like `http://localhost:3000/reset-password?token=<long-random-string>`
+2. Enter the account's email and click **Send reset link**
+3. Expected on screen: a **green** banner — *"A password reset link has been sent to your email. Check your inbox."*
+4. **Open the inbox** for that address (also check Spam/Promotions — first sends from a Gmail sender often land in Spam). Expected: a message from your Gmail address with subject **"Reset your OmniHome password"**, containing a **Reset my password** button.
+5. Hover/copy the button link. Expected: `http://localhost:3000/reset-password?token=<long-random-string>`
 6. Open that link → the **"Set a new password"** page
-7. Enter a new password twice (at least 8 characters, they must match) → **Reset password**
+7. Enter a new password twice (≥ 8 chars, must match) → **Reset password**
 8. Expected: green *"Your password has been reset. You can now sign in with your new password."* with a **Back to sign in** button
 9. Sign in with the **new** password → dashboard loads
-10. Try signing in with the **old** password → *"Invalid email or password"*
+10. Sign in with the **old** password → *"Invalid email or password"*
+
+> If the email never arrives, see "If something looks wrong" at the bottom — do **not** skip this, the whole point of this rebuild is real delivery.
 
 ## Scenario 2 — The reset link is single-use
 
-1. Repeat Scenario 1 up to step 7, but this time after resetting, go back and open the **same email link again**
+1. Repeat Scenario 1 up to step 7, then open the **same email link again**
 2. Expected: *"This reset link has already been used. Please request a new one."*
-3. Check the DB for proof:
+3. Proof in the DB:
    ```bash
    docker exec apartment-postgres psql -U postgres -d apartment_management -c 'select "usedAt" from "PasswordResetToken";'
    ```
    The row for your token has a non-null `usedAt`.
 
-## Scenario 3 — Expired token is rejected
+## Scenario 3 — Expired token is rejected (45-minute default)
 
-1. In `backend/.env`, set `PASSWORD_RESET_TOKEN_TTL_MINUTES=1` and restart the backend
-2. Request a reset link (Scenario 1 steps 1–2), then **wait ~2 minutes** before opening the link
+1. In `backend/.env`, set `PASSWORD_RESET_TOKEN_TTL_MINUTES=1` and `docker restart apartment-backend`
+2. Request a reset link (Scenario 1 steps 1–2), then **wait ~2 minutes** before opening it
 3. Expected: *"This reset link has expired. Please request a new one."*
-4. Set `PASSWORD_RESET_TOKEN_TTL_MINUTES=60` back and restart
+4. Set `PASSWORD_RESET_TOKEN_TTL_MINUTES=45` back (or delete the line to use the default) and restart.
 
 ## Scenario 4 — Google-only account gets the *different* email
 
-Prerequisites: an account that signed up with Google (has no password), e.g. the one from the Google Sign-In manual test guide.
+Prerequisites: an account created with Google Sign-In (no password) — see the Google auth guide.
 
-1. On `/forgot-password`, enter the **Google-only account's email** and submit
-2. Expected: the same neutral *"If an account exists..."* message — no hint about the account type
-3. Check the inbox. Expected: subject **"Your OmniHome account uses Google Sign-In"** — the body explains there is no password to reset and offers a **"Sign in with Google"** button. **There is no reset link in it.**
+1. On `/forgot-password`, enter the Google-only account's email and submit
+2. Expected on screen: a **blue info** banner — *"This account uses Google Sign-In. Please sign in with Google instead."*
+3. Check the inbox. Expected: subject **"Your OmniHome account uses Google Sign-In"** with a **Sign in with Google** button and **no reset link**.
 4. Confirm no token was created:
    ```bash
    docker exec apartment-postgres psql -U postgres -d apartment_management -c "select count(*) from \"PasswordResetToken\" t join \"User\" u on u.id = t.\"userId\" where u.email = '<google-only-email>';"
    ```
    Expected: `0`.
 
-## Scenario 5 — Unknown email does NOT reveal existence
+## Scenario 5 — Unknown email shows a clear error
 
-1. On `/forgot-password`, enter an email that has **no account** (e.g. `definitely-not-registered@example.com`) and submit
-2. Expected: the **exact same** *"If an account exists for this email, a reset link has been sent."* message as Scenario 1
-3. Expected: **no email arrives** in any inbox, and no row appears in `PasswordResetToken`
+> Note: this intentionally reveals whether an account exists (chosen to make the UI clearer) — it deviates from the original "never reveal existence" rule.
 
-## Scenario 6 — Reset logs out other sessions (tokenVersion)
+1. On `/forgot-password`, enter an email with **no account** (e.g. `definitely-not-registered@example.com`)
+2. Expected on screen: a **red** banner — *"No account found with this email address."*
+3. Expected: no email arrives, and no row appears in `PasswordResetToken`.
+
+## Scenario 6 — SMTP failure is reported, not faked
+
+This proves a failed send never shows a "check your inbox" success.
+
+1. In `backend/.env`, temporarily corrupt the credential: `GMAIL_APP_PASSWORD="wrong-app-password"` → `docker restart apartment-backend`
+2. Submit a valid password account's email on `/forgot-password`
+3. Expected: a **red** error, HTTP **502** with `{"error":{"code":"EMAIL_SEND_FAILED", ...}}` — **not** the success message
+4. Check the log line; the password must be scrubbed:
+   ```bash
+   docker logs apartment-backend --since 2m | grep -i "email delivery failed"
+   ```
+   Expected: contains `Gmail SMTP delivery failed` and `[redacted]`, never the actual app password.
+5. Restore the correct `GMAIL_APP_PASSWORD` and restart.
+
+## Scenario 7 — Reset logs out other sessions (tokenVersion)
 
 Prerequisites: two browsers (or normal + incognito), both signed in as the same user.
 
-1. In browser A and incognito B, sign in as `admin@sunrise.com`
-2. In incognito B, do the full reset flow (Scenario 1) and sign in with the new password
-3. Back in browser A, try to navigate / refresh a dashboard page
-4. Expected: browser A gets logged out (its refresh token is now invalid — API returns 401, you land back at login). Only the session that reset the password survives.
+1. Sign in as the same user in browser A and incognito B
+2. In incognito B, complete the reset flow and sign in with the new password
+3. Back in browser A, refresh/navigate a dashboard page
+4. Expected: browser A is logged out (its refresh token is now stale — 401 → back to login). Only the session that reset the password survives.
 
-## Scenario 7 — Rate limiting kicks in
+## Scenario 8 — Rate limiting kicks in
 
-1. In a terminal, fire 6 quick requests for the same email:
+1. Fire 6 quick requests for the same email:
    ```bash
-   for i in 1 2 3 4 5 6; do curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:4000/api/v1/auth/forgot-password -H 'Content-Type: application/json' -d '{"email":"spam@example.com"}'; done
+   for i in 1 2 3 4 5 6; do curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:4000/api/v1/auth/forgot-password -H 'Content-Type: application/json' -d '{"email":"admin@sunrise.com"}'; done
    ```
-2. Expected: five `200`s, then a `429` with `{"error":{"code":"RATE_LIMITED",...}}`
+   (adjust the port to your `PORT`)
+2. Expected: five `2xx`, then `429` with `{"error":{"code":"RATE_LIMITED",...}}`
 3. The limit resets after 15 minutes.
 
 ---
 
 ## If something looks wrong
 
-- **No email arrives at all**: check `docker logs apartment-backend` for a line like `[EMAIL] to=... (no RESEND_API_KEY — not delivered)` → the key isn't loaded (restart after editing `backend/.env`). If you see `Resend delivery failed`, check the sandbox rule (Option A only sends to your own Resend inbox) or domain verification (Option B).
-- **Reset link page says the link is invalid immediately**: make sure you opened the URL from the email (it contains `?token=...`), not just `/reset-password`.
-- **Google-only email never arrives**: same env checks as above — the endpoint still returns the neutral 200 even if delivery failed (by design).
-- **Anything else**: open DevTools → Network → look at the `forgot-password` / `reset-password` request and response, and send the JSON back with your report.
+- **No email arrives at all**: check `docker logs apartment-backend` for `[EMAIL] ... (GMAIL_USER/GMAIL_APP_PASSWORD not set — not delivered)` → the env vars aren't loaded (restart after editing `backend/.env`).
+- **`Gmail SMTP delivery failed: Invalid login: 535-5.7.8`**: the App Password is wrong, has spaces, or you used the normal Gmail password. Regenerate at https://myaccount.google.com/apppasswords.
+- **`Gmail SMTP delivery failed: ... quota`**: Gmail's ~500/day cap was hit (see ADR 004) — try again the next day.
+- **Email is in Spam**: expected for early sends from a Gmail sender; mark "not spam" to improve later delivery. This is exactly the reliability concern ADR 004 flags for production.
+- **"This reset link is invalid" immediately**: make sure you opened the URL from the email (it contains `?token=...`), not just `/reset-password`.
+- **Anything else**: open DevTools → Network → inspect the `forgot-password` / `reset-password` request and response and include the JSON in your report.
