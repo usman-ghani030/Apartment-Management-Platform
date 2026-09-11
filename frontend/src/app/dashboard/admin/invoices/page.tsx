@@ -2,8 +2,8 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, CreditCard, Banknote, Receipt, BellRing, RefreshCw } from 'lucide-react';
-import { ApiError, apiGet, apiPost, apiPatch } from '@/lib/api';
+import { ArrowLeft, Plus, CreditCard, Banknote, Receipt, BellRing, RefreshCw, CalendarClock, Trash2 } from 'lucide-react';
+import { ApiError, apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 import type { InvoiceResponse } from '@apartment/shared';
 
 interface PaymentHistoryItem {
@@ -55,12 +55,18 @@ export default function AdminInvoicesPage() {
   const [settingsErr, setSettingsErr] = useState('');
   const [runningReminders, setRunningReminders] = useState(false);
   const [reminderResult, setReminderResult] = useState('');
+  // Recurring billing settings
+  const [billingDay, setBillingDay] = useState<number | null>(null);
+  const [runningBilling, setRunningBilling] = useState(false);
+  const [billingResult, setBillingResult] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Dues-reminder settings (Phase 7: how many days before due to remind)
   const fetchSettings = useCallback(async () => {
     try {
-      const data = await apiGet<{ dueReminderDays: number }>('/api/v1/settings');
+      const data = await apiGet<{ dueReminderDays: number; billingDayOfMonth: number | null }>('/api/v1/settings');
       setReminderDays(data?.dueReminderDays ?? 3);
+      setBillingDay(data?.billingDayOfMonth ?? null);
     } catch {
       // Best-effort — the card shows the default window if settings can't load.
     } finally {
@@ -73,10 +79,27 @@ export default function AdminInvoicesPage() {
   const saveSettings = async () => {
     setSettingsMsg(''); setSettingsErr('');
     try {
-      const data = await apiPatch<{ dueReminderDays: number }>('/api/v1/settings', { dueReminderDays: reminderDays });
-      setSettingsMsg(`Saved — reminders go out ${data.dueReminderDays} day(s) before the due date.`);
+      const data = await apiPatch<{ dueReminderDays: number; billingDayOfMonth: number | null }>('/api/v1/settings', {
+        dueReminderDays: reminderDays,
+        billingDayOfMonth: billingDay,
+      });
+      setSettingsMsg(`Saved — reminders: ${data.dueReminderDays} day(s) before due, billing: day ${data.billingDayOfMonth ?? 'off'}`);
     } catch (err) {
       if (err instanceof ApiError) setSettingsErr(err.message);
+    }
+  };
+
+  const runBilling = async () => {
+    setRunningBilling(true); setBillingResult(''); setSettingsErr('');
+    try {
+      const result = await apiPost<{ created: number; skipped: number }>('/api/v1/settings/run-billing');
+      setBillingResult(result.created > 0
+        ? `Generated ${result.created} invoice(s), ${result.skipped} skipped (already exist).`
+        : `No new invoices — ${result.skipped} already exist for this period.`);
+    } catch (err) {
+      if (err instanceof ApiError) setSettingsErr(err.message);
+    } finally {
+      setRunningBilling(false);
     }
   };
 
@@ -129,11 +152,33 @@ export default function AdminInvoicesPage() {
     fetchUnits();
   }, []);
 
+  const handleDelete = async (id: string, invoiceNumber: string) => {
+    if (!window.confirm(`Delete invoice ${invoiceNumber}? This cannot be undone.`)) return;
+    setDeletingId(id);
+    try {
+      await apiDelete(`/api/v1/invoices/${id}`);
+      setInvoices((prev) => prev.filter((inv) => inv.id !== id));
+    } catch (err) {
+      if (err instanceof ApiError) setError(err.message);
+    } finally { setDeletingId(null); }
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true); setError('');
     try {
+      // Client-side mirror of the server rule (amount is stored in paisa, must be > 0)
       const amountCents = Math.round(parseFloat(amount) * 100);
+      if (!Number.isFinite(amountCents) || amountCents <= 0) {
+        setError('Enter an amount greater than zero');
+        setSubmitting(false);
+        return;
+      }
+      if (!dueDate) {
+        setError('Pick a due date');
+        setSubmitting(false);
+        return;
+      }
       await apiPost('/api/v1/invoices', { unitId, title, description, amount: amountCents, dueDate: new Date(dueDate).toISOString() });
       setTitle(''); setDescription(''); setAmount(''); setDueDate(''); setUnitId('');
       setShowForm(false); fetchInvoices();
@@ -198,6 +243,39 @@ export default function AdminInvoicesPage() {
           {reminderResult && <p className="text-xs text-gray-700 mt-3">{reminderResult}</p>}
         </div>
 
+        {/* Recurring Billing — day-of-month setting + manual trigger */}
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5 mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 bg-purple-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                <CalendarClock className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-sm text-gray-900">Recurring billing</h2>
+                <p className="text-xs text-gray-700 mt-0.5">Auto-generate invoices for all active units on a set day each month. Set to off to disable.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <label className="text-xs text-gray-700">Day of month:</label>
+              <select
+                value={billingDay ?? ''}
+                onChange={(e) => setBillingDay(e.target.value ? Number(e.target.value) : null)}
+                className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-accent-500/50"
+              >
+                <option value="">Off</option>
+                {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+              <button onClick={saveSettings} disabled={settingsLoading} className="bg-accent-600 hover:bg-accent-500 text-white rounded-lg px-4 py-2 text-sm font-medium transition-all disabled:opacity-50">Save</button>
+              <button onClick={runBilling} disabled={runningBilling} className="flex items-center gap-1 text-xs bg-purple-600 hover:bg-purple-500 text-white rounded-lg px-3 py-2 font-medium transition-all disabled:opacity-50">
+                <RefreshCw className={`w-3 h-3 ${runningBilling ? 'animate-spin' : ''}`} /> {runningBilling ? 'Generating…' : 'Generate now'}
+              </button>
+            </div>
+          </div>
+          {billingResult && <p className="text-xs text-gray-700 mt-3">{billingResult}</p>}
+        </div>
+
         {showForm && (
           <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 border border-gray-200 mb-8">
             <h2 className="text-lg font-semibold mb-4">Create Invoice</h2>
@@ -211,15 +289,15 @@ export default function AdminInvoicesPage() {
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Maintenance Dues - August 2024" required className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50" />
+                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Maintenance Dues - August 2024" required maxLength={200} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50" />
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
-                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50 resize-y" />
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} maxLength={1000} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50 resize-y" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Amount (Rs.)</label>
-                <input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" required className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50" />
+                <input type="number" step="0.01" min="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" required className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
@@ -254,6 +332,16 @@ export default function AdminInvoicesPage() {
                       <p className="text-xs text-green-400">Paid {formatRs(inv.paidAmount)}</p>
                     ) : (
                       <p className="text-xs text-gray-700">{inv.status === 'OVERDUE' ? 'Overdue' : 'Unpaid'}</p>
+                    )}
+                    {inv.status !== 'PAID' && (
+                      <button
+                        onClick={() => handleDelete(inv.id, inv.invoiceNumber)}
+                        disabled={deletingId === inv.id}
+                        className="mt-2 inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded px-2 py-1 transition-colors disabled:opacity-50"
+                        title="Delete invoice"
+                      >
+                        <Trash2 className="w-3 h-3" /> {deletingId === inv.id ? 'Deleting…' : 'Delete'}
+                      </button>
                     )}
                   </div>
                 </div>

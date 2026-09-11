@@ -26,6 +26,134 @@ export const UnitType = {
 
 export type UnitType = (typeof UnitType)[keyof typeof UnitType];
 
+export const BedroomType = {
+  STUDIO: 'STUDIO',
+  ONE_BED: 'ONE_BED',
+  TWO_BED: 'TWO_BED',
+  THREE_BED: 'THREE_BED',
+  FOUR_BED: 'FOUR_BED',
+  FOUR_PLUS_BED: 'FOUR_PLUS_BED',
+} as const;
+
+export type BedroomType = (typeof BedroomType)[keyof typeof BedroomType];
+
+export const BedroomTypeValues = Object.values(BedroomType);
+
+export const BEDROOM_TYPE_LABELS: Record<BedroomType, string> = {
+  STUDIO: 'Studio',
+  ONE_BED: '1 Bedroom',
+  TWO_BED: '2 Bedrooms',
+  THREE_BED: '3 Bedrooms',
+  FOUR_BED: '4 Bedrooms',
+  FOUR_PLUS_BED: '4+ Bedrooms',
+};
+
+// ── Staff Types (Phase 8) ─────────────────────────────────────────────────
+export const StaffRole = {
+  GUARD: 'GUARD',
+  CLEANER: 'CLEANER',
+  MAINTENANCE: 'MAINTENANCE',
+  OTHER: 'OTHER',
+} as const;
+
+export type StaffRole = (typeof StaffRole)[keyof typeof StaffRole];
+
+export const StaffRoleValues = Object.values(StaffRole);
+
+export const STAFF_ROLE_LABELS: Record<StaffRole, string> = {
+  GUARD: 'Guard',
+  CLEANER: 'Cleaner',
+  MAINTENANCE: 'Maintenance',
+  OTHER: 'Other',
+};
+
+export const CreateStaffSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(100),
+  role: z.enum(['GUARD', 'CLEANER', 'MAINTENANCE', 'OTHER']),
+  email: z.string().email('Invalid email').optional().nullable(),
+  phone: z.string().max(20).optional().nullable(),
+});
+export type CreateStaffInput = z.infer<typeof CreateStaffSchema>;
+
+export const UpdateStaffSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  role: z.enum(['GUARD', 'CLEANER', 'MAINTENANCE', 'OTHER']).optional(),
+  email: z.string().email('Invalid email').optional().nullable(),
+  phone: z.string().max(20).optional().nullable(),
+  isActive: z.boolean().optional(),
+});
+export type UpdateStaffInput = z.infer<typeof UpdateStaffSchema>;
+
+export interface StaffResponse {
+  id: string;
+  societyId: string;
+  name: string;
+  role: StaffRole;
+  email: string | null;
+  phone: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── SOS Alert Types (Phase 8) ──────────────────────────────────────────────
+export const SOSAlertStatus = {
+  ACTIVE: 'ACTIVE',
+  ACKNOWLEDGED: 'ACKNOWLEDGED',
+  RESOLVED: 'RESOLVED',
+} as const;
+export type SOSAlertStatus = (typeof SOSAlertStatus)[keyof typeof SOSAlertStatus];
+
+export const SOSAlertCategory = {
+  MEDICAL: 'MEDICAL',
+  FIRE: 'FIRE',
+  SECURITY: 'SECURITY',
+  OTHER: 'OTHER',
+} as const;
+export type SOSAlertCategory = (typeof SOSAlertCategory)[keyof typeof SOSAlertCategory];
+
+export const SOS_ALERT_CATEGORY_LABELS: Record<SOSAlertCategory, string> = {
+  MEDICAL: 'Medical',
+  FIRE: 'Fire',
+  SECURITY: 'Security',
+  OTHER: 'Other',
+};
+
+export const SOS_ALERT_STATUS_LABELS: Record<SOSAlertStatus, string> = {
+  ACTIVE: 'Active',
+  ACKNOWLEDGED: 'Acknowledged',
+  RESOLVED: 'Resolved',
+};
+
+export const TriggerSOSSchema = z.object({
+  category: z.enum(['MEDICAL', 'FIRE', 'SECURITY', 'OTHER']),
+  unitId: z.string().uuid('Invalid unit ID'),
+});
+export type TriggerSOSInput = z.infer<typeof TriggerSOSSchema>;
+
+export const ResolveSOSSchema = z.object({
+  status: z.enum(['ACKNOWLEDGED', 'RESOLVED']),
+  notes: z.string().max(500).optional(),
+});
+export type ResolveSOSInput = z.infer<typeof ResolveSOSSchema>;
+
+export interface SOSAlertResponse {
+  id: string;
+  societyId: string;
+  unitId: string;
+  unitNumber: string;
+  residentId: string;
+  residentName: string;
+  category: SOSAlertCategory;
+  status: SOSAlertStatus;
+  notes: string | null;
+  resolvedByUserId: string | null;
+  resolvedByName: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── Response Envelope ───────────────────────────────────────────────────────
 export interface ApiResponse<T> {
   data: T | null;
@@ -44,33 +172,81 @@ export interface PaginatedResponse<T> {
 
 // ── Auth Schemas ────────────────────────────────────────────────────────────
 export const SignupSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
-  name: z.string().min(1, 'Name is required'),
-  societyName: z.string().min(1, 'Society name is required'),
+  email: z.string().email('Invalid email address').max(200),
+  password: z.string().min(8, 'Password must be at least 8 characters').max(128, 'Password must be under 128 characters'),
+  name: z.string().min(1, 'Name is required').max(100, 'Name must be under 100 characters'),
+  societyName: z.string().min(1, 'Society name is required').max(100, 'Society name must be under 100 characters'),
   societySlug: z
     .string()
     .min(2, 'Slug must be at least 2 characters')
+    .max(50, 'Slug must be under 50 characters')
     .regex(/^[a-z0-9-]+$/, 'Slug can only contain lowercase letters, numbers, and hyphens'),
 });
 
 export type SignupInput = z.infer<typeof SignupSchema>;
 
 export const LoginSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(1, 'Password is required'),
+  email: z.string().email('Invalid email address').max(200),
+  password: z.string().min(1, 'Password is required').max(128),
 });
 
 export type LoginInput = z.infer<typeof LoginSchema>;
 
 export const InviteResidentSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  name: z.string().min(1, 'Name is required'),
+  email: z.string().email('Invalid email address').max(200),
+  name: z.string().min(1, 'Name is required').max(100, 'Name must be under 100 characters'),
   unitId: z.string().uuid('Invalid unit ID').optional(),
   role: z.enum(['RESIDENT', 'SECURITY_GUARD', 'VENDOR']).default('RESIDENT'),
 });
 
 export type InviteResidentInput = z.infer<typeof InviteResidentSchema>;
+
+// ── Google Sign-In ───────────────────────────────────────────────────────────
+// `mode: 'signin'`  → log in / link an existing account (login page)
+// `mode: 'signup'`  → tenant onboarding: create a new Society + first
+//                     COMMITTEE_ADMIN from the signup page (requires society fields)
+export const GoogleAuthSchema = z.object({
+  idToken: z.string().min(1, 'Google ID token is required').max(10000),
+  mode: z.enum(['signin', 'signup']).default('signin'),
+  // Required only when mode === 'signup' — same rules as SignupSchema
+  societyName: z.string().min(1, 'Society name is required').max(100, 'Society name must be under 100 characters').optional(),
+  societySlug: z
+    .string()
+    .min(2, 'Slug must be at least 2 characters')
+    .max(50, 'Slug must be under 50 characters')
+    .regex(/^[a-z0-9-]+$/, 'Slug can only contain lowercase letters, numbers, and hyphens')
+    .optional(),
+});
+
+export type GoogleAuthInput = z.infer<typeof GoogleAuthSchema>;
+export type GoogleAuthMode = GoogleAuthInput['mode'];
+
+// Auth response for Google Sign-In — same shape as the login/signup responses
+// (tokens included so the client can persist them). `linked` is true when an
+// existing password-based account was just linked to the Google account
+// (frontend shows a confirmation message in that case).
+export interface GoogleAuthResponse extends AuthResponse {
+  accessToken: string;
+  refreshToken: string;
+  linked?: boolean;
+}
+
+// ── Password Reset ───────────────────────────────────────────────────────────
+// ForgotPasswordSchema: request a reset link by email. The endpoint ALWAYS
+// returns the same generic response whether or not the email exists (prevents
+// account enumeration) — see the auth route.
+export const ForgotPasswordSchema = z.object({
+  email: z.string().email('Invalid email address').max(200),
+});
+export type ForgotPasswordInput = z.infer<typeof ForgotPasswordSchema>;
+
+// ResetPasswordSchema: consume a single-use reset token and set a new password.
+// Password rules mirror SignupSchema (8–128 chars).
+export const ResetPasswordSchema = z.object({
+  token: z.string().min(1, 'Reset token is required').max(2000),
+  password: z.string().min(8, 'Password must be at least 8 characters').max(128, 'Password must be under 128 characters'),
+});
+export type ResetPasswordInput = z.infer<typeof ResetPasswordSchema>;
 
 // ── Auth Response Types ─────────────────────────────────────────────────────
 export interface UserProfile {
@@ -97,20 +273,24 @@ export interface AuthResponse {
 // ── Notice Schemas ───────────────────────────────────────────────────────────
 export const CreateNoticeSchema = z.object({
   title: z.string().min(1, 'Title is required').max(200, 'Title must be under 200 characters'),
-  content: z.string().min(1, 'Content is required'),
-  category: z.string().min(1, 'Category is required').default('general'),
+  content: z.string().min(1, 'Content is required').max(10000, 'Content must be under 10,000 characters'),
+  category: z.string().min(1, 'Category is required').max(100, 'Category must be under 100 characters').default('general'),
   publish: z.boolean().default(false), // If true, set publishedAt to now
+  // Phase 8: targeted notifications
+  targetType: z.enum(['ALL_UNITS', 'SPECIFIC_UNITS']).default('ALL_UNITS'),
+  targetUnitIds: z.array(z.string().uuid()).optional().nullable(),
 });
-
 export type CreateNoticeInput = z.infer<typeof CreateNoticeSchema>;
 
 export const UpdateNoticeSchema = z.object({
   title: z.string().min(1).max(200).optional(),
-  content: z.string().min(1).optional(),
-  category: z.string().min(1).optional(),
+  content: z.string().min(1).max(10000, 'Content must be under 10,000 characters').optional(),
+  category: z.string().min(1).max(100).optional(),
   publish: z.boolean().optional(),
+  // Phase 8: targeted notifications
+  targetType: z.enum(['ALL_UNITS', 'SPECIFIC_UNITS']).optional(),
+  targetUnitIds: z.array(z.string().uuid()).optional().nullable(),
 });
-
 export type UpdateNoticeInput = z.infer<typeof UpdateNoticeSchema>;
 
 export interface NoticeResponse {
@@ -121,6 +301,8 @@ export interface NoticeResponse {
   title: string;
   content: string;
   category: string;
+  targetType: string;
+  targetUnitIds: string[] | null;
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -134,19 +316,19 @@ export type TicketStatus = (typeof TicketStatusValues)[number];
 
 // ── Ticket Schemas ───────────────────────────────────────────────────────────
 export const CreateTicketSchema = z.object({
-  title: z.string().min(1, 'Title is required').max(200),
-  description: z.string().min(1, 'Description is required'),
-  category: z.string().min(1).default('other'),
+  title: z.string().min(1, 'Title is required').max(200, 'Title must be under 200 characters'),
+  description: z.string().min(1, 'Description is required').max(5000, 'Description must be under 5,000 characters'),
+  category: z.string().min(1).max(100).default('other'),
   unitId: z.string().uuid().optional(),
 });
 export type CreateTicketInput = z.infer<typeof CreateTicketSchema>;
 
 export const UpdateTicketSchema = z.object({
   title: z.string().min(1).max(200).optional(),
-  description: z.string().min(1).optional(),
-  category: z.string().min(1).optional(),
+  description: z.string().min(1).max(5000).optional(),
+  category: z.string().min(1).max(100).optional(),
   status: z.enum(TicketStatusValues).optional(),
-  assignedTo: z.string().optional().nullable(),
+  assignedTo: z.string().max(100).optional().nullable(),
   // Phase 7 vendor ratings: 1-5 stars + optional comment, captured when the
   // ticket transitions to CLOSED.
   rating: z.number().int().min(1).max(5).optional(),
@@ -155,7 +337,7 @@ export const UpdateTicketSchema = z.object({
 export type UpdateTicketInput = z.infer<typeof UpdateTicketSchema>;
 
 export const AddCommentSchema = z.object({
-  content: z.string().min(1, 'Comment cannot be empty'),
+  content: z.string().min(1, 'Comment cannot be empty').max(2000, 'Comment must be under 2,000 characters'),
 });
 export type AddCommentInput = z.infer<typeof AddCommentSchema>;
 
@@ -209,7 +391,7 @@ export type BookingStatus = (typeof BookingStatusValues)[number];
 
 export const CreateAmenitySchema = z.object({
   name: z.string().min(1).max(100),
-  description: z.string().optional(),
+  description: z.string().max(1000).optional(),
   maxDuration: z.number().int().positive().default(120),
   advanceNotice: z.number().int().min(0).default(24),
   maxPerUnit: z.number().int().positive().default(2),
@@ -218,7 +400,7 @@ export type CreateAmenityInput = z.infer<typeof CreateAmenitySchema>;
 
 export const UpdateAmenitySchema = z.object({
   name: z.string().min(1).max(100).optional(),
-  description: z.string().optional(),
+  description: z.string().max(1000).optional(),
   maxDuration: z.number().int().positive().optional(),
   advanceNotice: z.number().int().min(0).optional(),
   maxPerUnit: z.number().int().positive().optional(),
@@ -253,7 +435,7 @@ export type InvoiceStatus = (typeof InvoiceStatusValues)[number];
 export const CreateInvoiceSchema = z.object({
   unitId: z.string().uuid(),
   title: z.string().min(1).max(200),
-  description: z.string().optional(),
+  description: z.string().max(1000).optional(),
   amount: z.number().int().positive('Amount must be positive (in paisa — rupees × 100)'),
   dueDate: z.string().datetime(),
   periodStart: z.string().datetime().optional(),
@@ -264,7 +446,7 @@ export type CreateInvoiceInput = z.infer<typeof CreateInvoiceSchema>;
 
 export const UpdateInvoiceSchema = z.object({
   title: z.string().min(1).max(200).optional(),
-  description: z.string().optional(),
+  description: z.string().max(1000).optional(),
   amount: z.number().int().positive().optional(),
   dueDate: z.string().datetime().optional(),
   status: z.enum(InvoiceStatusValues).optional(),
@@ -314,10 +496,10 @@ export type VisitorPassStatus = (typeof VisitorPassStatusValues)[number];
 
 export const CreateVisitorPassSchema = z.object({
   visitorName: z.string().min(1, 'Visitor name is required').max(100),
-  visitorPhone: z.string().min(1, 'Phone is required'),
-  visitorEmail: z.string().email().optional().or(z.literal('')),
-  vehicleNumber: z.string().optional().or(z.literal('')),
-  purpose: z.string().optional().or(z.literal('')),
+  visitorPhone: z.string().min(1, 'Phone is required').max(30, 'Phone must be under 30 characters'),
+  visitorEmail: z.string().email('Invalid email address').max(200).optional().or(z.literal('')),
+  vehicleNumber: z.string().max(30).optional().or(z.literal('')),
+  purpose: z.string().max(200).optional().or(z.literal('')),
   expectedArrival: z.string().datetime().optional(),
   expectedDeparture: z.string().datetime().optional(),
 });
@@ -325,10 +507,10 @@ export type CreateVisitorPassInput = z.infer<typeof CreateVisitorPassSchema>;
 
 export const UpdateVisitorPassSchema = z.object({
   visitorName: z.string().min(1).max(100).optional(),
-  visitorPhone: z.string().min(1).optional(),
-  visitorEmail: z.string().email().optional().or(z.literal('')),
-  vehicleNumber: z.string().optional().or(z.literal('')),
-  purpose: z.string().optional().or(z.literal('')),
+  visitorPhone: z.string().min(1).max(30).optional(),
+  visitorEmail: z.string().email('Invalid email address').max(200).optional().or(z.literal('')),
+  vehicleNumber: z.string().max(30).optional().or(z.literal('')),
+  purpose: z.string().max(200).optional().or(z.literal('')),
   expectedArrival: z.string().datetime().optional(),
   expectedDeparture: z.string().datetime().optional(),
   status: z.enum(VisitorPassStatusValues).optional(),
@@ -388,10 +570,10 @@ export interface PollOption {
 
 export const CreatePollSchema = z.object({
   title: z.string().min(1, 'Title is required').max(200),
-  description: z.string().optional().or(z.literal('')),
+  description: z.string().max(2000).optional().or(z.literal('')),
   options: z.array(z.object({
-    label: z.string().min(1, 'Option label is required'),
-    description: z.string().optional().or(z.literal('')),
+    label: z.string().min(1, 'Option label is required').max(100, 'Option label must be under 100 characters'),
+    description: z.string().max(300).optional().or(z.literal('')),
   })).min(2, 'At least 2 options required').max(10, 'Maximum 10 options allowed'),
   noticeId: z.string().uuid().optional().nullable(),
   startsAt: z.string().datetime(),
@@ -402,10 +584,10 @@ export type CreatePollInput = z.infer<typeof CreatePollSchema>;
 
 export const UpdatePollSchema = z.object({
   title: z.string().min(1).max(200).optional(),
-  description: z.string().optional().or(z.literal('')),
+  description: z.string().max(2000).optional().or(z.literal('')),
   options: z.array(z.object({
-    label: z.string().min(1),
-    description: z.string().optional().or(z.literal('')),
+    label: z.string().min(1).max(100),
+    description: z.string().max(300).optional().or(z.literal('')),
   })).min(2).max(10).optional(),
   startsAt: z.string().datetime().optional(),
   endsAt: z.string().datetime().optional(),
@@ -454,10 +636,17 @@ export type UpdateDocumentFolderInput = z.infer<typeof UpdateDocumentFolderSchem
 
 export const CreateDocumentSchema = z.object({
   name: z.string().min(1, 'Name is required').max(200),
-  description: z.string().optional().or(z.literal('')),
+  description: z.string().max(1000).optional().or(z.literal('')),
   folderId: z.string().uuid().optional().nullable(),
 });
 export type CreateDocumentInput = z.infer<typeof CreateDocumentSchema>;
+
+export const UpdateDocumentSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(200).optional(),
+  description: z.string().max(1000).optional().nullable(),
+  folderId: z.string().uuid().optional().nullable(),
+});
+export type UpdateDocumentInput = z.infer<typeof UpdateDocumentSchema>;
 
 export interface DocumentFolderResponse {
   id: string;
@@ -530,6 +719,66 @@ export interface ParcelResponse {
   status: ParcelStatus;
   createdAt: string;
   updatedAt: string;
+}
+
+// ── Recurring Billing Types (Phase 8) ───────────────────────────────────────
+export const UpdateBillingSettingsSchema = z.object({
+  billingDayOfMonth: z.number().int().min(1).max(28).nullable(),
+});
+export type UpdateBillingSettingsInput = z.infer<typeof UpdateBillingSettingsSchema>;
+
+// ── CSV Import Types (Bulk Unit/Building Import) ─────────────────────────────
+// CSV column headers map to these keys. The schema reuses the same validation
+// rules as the manual unit creation form so the importer and the form always
+// accept exactly the same data.
+// Helper: convert empty string to undefined so optional/nullable works for CSV cells
+const csvOptionalString = (max?: number) => {
+  let schema = z.string().transform((v) => (v === '' ? undefined : v));
+  if (max) schema = z.string().max(max).transform((v) => (v === '' ? undefined : v)) as any;
+  return schema.optional().nullable();
+};
+
+export const CSVUnitRowSchema = z.object({
+  'Building Name': z.string().min(1, 'Building Name is required').max(100, 'Building Name must be under 100 characters'),
+  'Unit Number': z.string().min(1, 'Unit Number is required').max(20, 'Unit Number must be under 20 characters'),
+  'Floor': z.coerce.number().int().min(0).max(500, 'Floor must be between 0 and 500').optional().default(0),
+  'Bedroom Type': z.enum(['STUDIO', 'ONE_BED', 'TWO_BED', 'THREE_BED', 'FOUR_BED', 'FOUR_PLUS_BED'], {
+    errorMap: () => ({ message: 'Bedroom Type must be one of: STUDIO, ONE_BED, TWO_BED, THREE_BED, FOUR_BED, FOUR_PLUS_BED' }),
+  }),
+  'Primary Contact Name': z.string().max(100).transform((v) => (v === '' ? undefined : v)).optional().nullable(),
+  'Primary Contact Email': z.string().max(200).transform((v) => (v === '' ? undefined : v)).optional().nullable().refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), 'Invalid email address'),
+  'Primary Contact Phone': z.string().max(30).transform((v) => (v === '' ? undefined : v)).optional().nullable(),
+});
+export type CSVUnitRow = z.infer<typeof CSVUnitRowSchema>;
+
+export const CSV_IMPORT_MAX_ROWS = 1000;
+export const CSV_IMPORT_MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
+
+export const CSV_IMPORT_HEADERS = [
+  'Building Name',
+  'Unit Number',
+  'Floor',
+  'Bedroom Type',
+  'Primary Contact Name',
+  'Primary Contact Email',
+  'Primary Contact Phone',
+] as const;
+
+// Response types for the two-step import flow
+export interface CSVValidateResult {
+  toCreate: CSVUnitRow[];
+  toSkip: { row: number; buildingName: string; unitNumber: string; reason: string }[];
+  errors: { row: number; reason: string }[];
+  totalRows: number;
+}
+
+export interface CSVImportJobResult {
+  jobId: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  created: number;
+  skipped: number;
+  errors: number;
+  totalRows: number;
 }
 
 // ── Legacy ──────────────────────────────────────────────────────────────────

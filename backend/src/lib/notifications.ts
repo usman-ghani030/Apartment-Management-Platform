@@ -8,7 +8,12 @@ type NotificationEvent =
   | { type: 'TICKET_COMMENT_ADDED'; ticketId: string; societyId: string; authorId: string }
   | { type: 'PARCEL_ARRIVED'; parcelId: string; societyId: string; unitId: string; description: string }
   | { type: 'DUE_REMINDER'; invoiceId: string; invoiceNumber: string; societyId: string; title: string; amount: number; dueDate: string; daysBefore: number }
-  | { type: 'PAYMENT_CONFIRMED'; invoiceId: string; societyId: string; amount: number; txnRef: string | null };
+  | { type: 'PAYMENT_CONFIRMED'; invoiceId: string; societyId: string; amount: number; txnRef: string | null }
+  | { type: 'SOS_ALERT_TRIGGERED'; sosAlertId: string; societyId: string; unitId: string; residentId: string; category: string }
+  | { type: 'SOS_ALERT_ACKNOWLEDGED'; sosAlertId: string; societyId: string; acknowledgedBy: string }
+  | { type: 'SOS_ALERT_RESOLVED'; sosAlertId: string; societyId: string; resolvedBy: string }
+  | { type: 'RECURRING_BILLING_GENERATED'; invoiceId: string; invoiceNumber: string; societyId: string; unitId: string; unitNumber: string; billingPeriod: string };
+
 
 /**
  * Send a notification. In Phase 1, this logs to the audit trail and console.
@@ -100,6 +105,55 @@ export async function sendNotification(event: NotificationEvent): Promise<void> 
         entityType: 'invoice',
         entityId: event.invoiceId,
         after: { amount: event.amount, txnRef: event.txnRef },
+      });
+      break;
+
+    case 'SOS_ALERT_TRIGGERED':
+      await logAudit({
+        societyId: event.societyId,
+        actorUserId: event.residentId,
+        action: 'SOS_ALERT_TRIGGERED',
+        entityType: 'sos_alert',
+        entityId: event.sosAlertId,
+        after: { unitId: event.unitId, category: event.category },
+      });
+      break;
+
+    case 'SOS_ALERT_ACKNOWLEDGED':
+      await logAudit({
+        societyId: event.societyId,
+        actorUserId: null,
+        action: 'SOS_ALERT_ACKNOWLEDGED',
+        entityType: 'sos_alert',
+        entityId: event.sosAlertId,
+        after: { acknowledgedBy: event.acknowledgedBy },
+      });
+      break;
+
+    case 'SOS_ALERT_RESOLVED':
+      await logAudit({
+        societyId: event.societyId,
+        actorUserId: null,
+        action: 'SOS_ALERT_RESOLVED',
+        entityType: 'sos_alert',
+        entityId: event.sosAlertId,
+        after: { resolvedBy: event.resolvedBy },
+      });
+      break;
+
+    case 'RECURRING_BILLING_GENERATED':
+      await logAudit({
+        societyId: event.societyId,
+        actorUserId: null,
+        action: 'RECURRING_BILLING_GENERATED',
+        entityType: 'invoice',
+        entityId: event.invoiceId,
+        after: {
+          invoiceNumber: event.invoiceNumber,
+          unitId: event.unitId,
+          unitNumber: event.unitNumber,
+          billingPeriod: event.billingPeriod,
+        },
       });
       break;
   }

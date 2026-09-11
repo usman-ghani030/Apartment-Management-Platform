@@ -1,6 +1,7 @@
 import { Queue, Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { sendDueReminders } from '../lib/due-reminders';
+import { generateRecurringInvoices } from '../lib/recurring-billing';
 
 /**
  * Background job infrastructure (docs/PLAN.md §5 — one queue module owns all jobs).
@@ -115,4 +116,66 @@ export async function stopReminderQueue(): Promise<void> {
     /* ignore */
   }
   connection = null;
+}
+
+// ── Recurring Billing Job (Phase 8, slice 5) ──────────────────────────────
+const BILLING_JOB_NAME = 'recurring-billing';
+const BILLING_SCHEDULER_ID = 'recurring-billing-scheduler';
+const BILLING_DEFAULT_CRON = '0 8 1 * *'; // 08:00 UTC on the 1st of every month
+const BILLING_CRON = process.env.RECURRING_BILLING_CRON || BILLING_DEFAULT_CRON;
+
+let billingQueue: Queue | null = null;
+let billingWorker: Worker | null = null;
+
+async function processBillingJob(job: Job): Promise<{ created: number; skipped: number; errors: number }> {
+  const result = await generateRecurringInvoices();
+  return { created: result.created, skipped: result.skipped, errors: result.errors.length };
+}
+
+/**
+ * Start the scheduled recurring billing job. Safe to call on every boot;
+ * if Redis is unavailable the queue simply never activates.
+ */
+export async function startBillingQueue(): Promise<void> {
+  try {
+    const conn = getConnection();
+    if (!conn) {
+      console.log('[Queue] REDIS_URL not set — recurring billing disabled (manual trigger still available)');
+      return;
+    }
+
+    billingQueue = new Queue(BILLING_JOB_NAME, { connection: conn });
+    billingWorker = new Worker(BILLING_JOB_NAME, processBillingJob, { connection: conn });
+
+    await billingQueue.upsertJobScheduler(
+      BILLING_SCHEDULER_ID,
+      { pattern: BILLING_CRON },
+      { name: BILLING_JOB_NAME, data: {} }
+    );
+
+    billingWorker.on('completed', (job) => {
+      console.log(`[Queue] recurring-billing completed — created ${job.returnvalue?.created ?? 0}, skipped ${job.returnvalue?.skipped ?? 0}, errors ${job.returnvalue?.errors ?? 0}`);
+    });
+    billingWorker.on('failed', (job, err) => {
+      console.error(`[Queue] recurring-billing failed: ${err instanceof Error ? err.message : err}`);
+    });
+
+    console.log(`[Queue] Recurring billing scheduled (${BILLING_CRON}, ${process.env.TZ || 'UTC'})`);
+  } catch (err) {
+    console.error(
+      `[Queue] Could not start recurring billing (${err instanceof Error ? err.message : err}) — automated job disabled; API unaffected`
+    );
+  }
+}
+
+/** Graceful shutdown for billing queue. */
+export async function stopBillingQueue(): Promise<void> {
+  try {
+    await billingWorker?.close();
+  } catch { /* ignore */ }
+  billingWorker = null;
+  try {
+    await billingQueue?.close();
+  } catch { /* ignore */ }
+  billingQueue = null;
 }

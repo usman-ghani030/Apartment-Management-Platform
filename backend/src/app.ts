@@ -90,6 +90,14 @@ app.use('/api/v1/payments', paymentRoutes);
 import auditLogRoutes from './routes/audit-log';
 app.use('/api/v1/audit-logs', auditLogRoutes);
 
+// ── Staff Routes (Phase 8) ────────────────────────────────────────────────
+import staffRoutes from './routes/staff';
+app.use('/api/v1/staff', staffRoutes);
+
+// ── SOS Alert Routes (Phase 8) ────────────────────────────────────────────
+import sosAlertRoutes from './routes/sos-alerts';
+app.use('/api/v1/sos-alerts', sosAlertRoutes);
+
 // ── Settings Routes (per-society settings, dues reminders) ─────────────────
 import settingsRoutes from './routes/settings';
 app.use('/api/v1/settings', settingsRoutes);
@@ -97,6 +105,10 @@ app.use('/api/v1/settings', settingsRoutes);
 // ── Analytics Routes (admin-only aggregate view) ───────────────────────────
 import analyticsRoutes from './routes/analytics';
 app.use('/api/v1/analytics', analyticsRoutes);
+
+// ── CSV Import Routes ─────────────────────────────────────────────────────
+import importRoutes from './routes/import-csv';
+app.use('/api/v1/import', importRoutes);
 
 // ── Error Handler (must be last) ──────────────────────────────────────────
 app.use(errorHandler);

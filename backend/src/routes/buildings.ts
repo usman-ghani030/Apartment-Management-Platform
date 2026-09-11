@@ -22,6 +22,48 @@ router.get('/', requireAuth, loadMembership, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── GET /api/v1/buildings/:id ─────────────────────────────────────────────
+router.get('/:id', requireAuth, loadMembership, async (req, res, next) => {
+  try {
+    const societyId = req.membership!.societyId;
+    const building = await prisma.building.findFirst({
+      where: { id: req.params.id, societyId, deletedAt: null },
+      include: {
+        units: {
+          where: { deletedAt: null },
+          include: {
+            _count: { select: { memberships: { where: { status: 'ACTIVE', deletedAt: null } } } },
+            memberships: {
+              where: { status: 'ACTIVE', deletedAt: null },
+              include: { user: { select: { id: true, name: true, email: true } } },
+              take: 1,
+            },
+          },
+          orderBy: [{ floor: 'asc' }, { unitNumber: 'asc' }],
+        },
+        _count: { select: { units: { where: { deletedAt: null } } } },
+      },
+    });
+    if (!building) throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Building not found');
+
+    sendSuccess(res, {
+      id: building.id,
+      name: building.name,
+      unitCount: building._count.units,
+      units: building.units.map((u) => ({
+        id: u.id,
+        unitNumber: u.unitNumber,
+        floor: u.floor,
+        type: u.type,
+        bedroomType: u.bedroomType,
+        residentCount: u._count.memberships,
+        occupantName: u.memberships[0]?.user?.name || u.primaryContactName || null,
+        hasLinkedResident: u.memberships.length > 0,
+      })),
+    });
+  } catch (err) { next(err); }
+});
+
 // ── POST /api/v1/buildings ────────────────────────────────────────────────
 const CreateBuildingSchema = z.object({ name: z.string().min(1).max(100) });
 

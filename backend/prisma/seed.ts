@@ -6,11 +6,29 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Seeding database...');
 
-  // Clean existing data
+  // Clean existing data (order matters for FK constraints)
   await prisma.auditLog.deleteMany();
+  await prisma.invoiceReminder.deleteMany();
+  await prisma.payment.deleteMany();
+  await prisma.invoice.deleteMany();
+  await prisma.sOSAlert.deleteMany();
+  await prisma.ticketComment.deleteMany();
+  await prisma.ticket.deleteMany();
+  await prisma.noticeReadReceipt.deleteMany();
+  await prisma.notice.deleteMany();
+  await prisma.vote.deleteMany();
+  await prisma.poll.deleteMany();
+  await prisma.booking.deleteMany();
+  await prisma.amenity.deleteMany();
+  await prisma.gateLog.deleteMany();
+  await prisma.visitorPass.deleteMany();
+  await prisma.parcel.deleteMany();
+  await prisma.document.deleteMany();
+  await prisma.documentFolder.deleteMany();
   await prisma.membership.deleteMany();
   await prisma.unit.deleteMany();
   await prisma.building.deleteMany();
+  await prisma.staff.deleteMany();
   await prisma.user.deleteMany();
   await prisma.society.deleteMany();
 

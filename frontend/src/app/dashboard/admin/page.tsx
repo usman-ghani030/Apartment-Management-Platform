@@ -5,7 +5,10 @@ import { useRouter } from 'next/navigation';
 import {
   Building2, Users, FileText, CreditCard, Shield,
   CalendarRange, UserPlus, Ticket, Wrench, ChevronRight, Activity, QrCode,
+  AlertTriangle,
 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { apiGet } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useAdminShell } from '@/components/dashboard/admin-shell';
@@ -59,6 +62,13 @@ function SummaryCard({
 export default function AdminDashboard() {
   const router = useRouter();
   const { user, stats, recentTickets, statsLoading } = useAdminShell();
+  const [activeSosCount, setActiveSosCount] = useState(0);
+
+  useEffect(() => {
+    apiGet<{ count: number }>('/api/v1/sos-alerts/active-count')
+      .then((res) => setActiveSosCount(res.count))
+      .catch(() => {});
+  }, []);
 
   if (statsLoading) {
     return (
@@ -118,6 +128,16 @@ export default function AdminDashboard() {
       href: '/dashboard/admin/invoices',
       urgent: true,
       category: 'Finance',
+    });
+  }
+  if (activeSosCount > 0) {
+    attentionItems.unshift({
+      icon: AlertTriangle,
+      title: `${activeSosCount} active SOS alert${activeSosCount > 1 ? 's' : ''}`,
+      subtitle: 'Emergency alerts requiring immediate attention',
+      href: '/dashboard/admin/sos-alerts',
+      urgent: true,
+      category: 'Safety',
     });
   }
 

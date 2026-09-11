@@ -8,7 +8,7 @@ import { sendSuccess } from '../lib/response';
 import { requireAuth, loadMembership } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { logAudit } from '../lib/audit';
-import { CreateDocumentFolderSchema, UpdateDocumentFolderSchema, CreateDocumentSchema } from '@apartment/shared';
+import { CreateDocumentFolderSchema, UpdateDocumentFolderSchema, CreateDocumentSchema, UpdateDocumentSchema } from '@apartment/shared';
 import type { DocumentFolderResponse, DocumentResponse } from '@apartment/shared';
 
 const router = Router();
@@ -30,6 +30,31 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max
+  // Server-side type allowlist for document uploads (Phase 1/6 convention:
+  // never trust the client — reject executables, HTML, etc.). Broad enough
+  // for real society documents (bylaws, minutes, contracts, invoices).
+  fileFilter: (_req, file, cb) => {
+    const allowed = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'text/plain',
+      'text/csv',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/gif',
+    ];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new AppError(ErrorCodes.VALIDATION_ERROR, 400, 'File type not allowed. Upload PDF, Word, Excel, PowerPoint, text, CSV, or image files.'));
+    }
+  },
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -203,16 +228,16 @@ router.get('/:id/download', requireAuth, loadMembership, async (req, res, next) 
 // PATCH /api/v1/documents/:id — update document metadata
 router.patch('/:id', requireAuth, loadMembership, requireRole('update', 'document'), async (req, res, next) => {
   try {
-    const { name, description, folderId } = req.body as { name?: string; description?: string; folderId?: string | null };
+    const input = UpdateDocumentSchema.parse(req.body);
     const societyId = req.membership!.societyId;
 
     const existing = await prisma.document.findFirst({ where: { id: req.params.id, societyId } });
     if (!existing) throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Document not found');
 
     const updateData: any = {};
-    if (name) updateData.name = name;
-    if (description !== undefined) updateData.description = description || null;
-    if (folderId !== undefined) updateData.folderId = folderId || null;
+    if (input.name !== undefined) updateData.name = input.name;
+    if (input.description !== undefined) updateData.description = input.description || null;
+    if (input.folderId !== undefined) updateData.folderId = input.folderId || null;
 
     const updated = await prisma.document.update({
       where: { id: req.params.id },

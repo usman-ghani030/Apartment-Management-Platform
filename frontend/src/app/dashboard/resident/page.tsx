@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation';
 import {
   FileText, Wrench, CreditCard, CalendarRange,
   QrCode, BarChart3, Folder, Ticket, Clock, ChevronRight,
-  User, Package,
+  User, Package, Shield, AlertTriangle,
 } from 'lucide-react';
-import { ApiError, apiGet } from '@/lib/api';
+import { ApiError, apiGet, apiPost } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -21,6 +21,7 @@ interface DashboardData {
   pendingVisitors: number;
   activePolls: number;
   recentActivity: Array<{ type: string; title: string; time: string; status?: string }>;
+  onDutyStaff: Array<{ name: string; role: string }>;
 }
 
 // ── Quick Action Item ─────────────────────────────────────────────────
@@ -79,18 +80,20 @@ export default function ResidentDashboard() {
   const [dashboard, setDashboard] = useState<DashboardData>({
     unreadNotices: 0, openTickets: 0, pendingInvoices: { count: 0, overdue: false },
     pendingVisitors: 0, activePolls: 0, recentActivity: [],
+    onDutyStaff: [],
   });
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [notices, tickets, invoices, visitors, polls] = await Promise.all([
+        const [notices, tickets, invoices, visitors, polls, onDuty] = await Promise.all([
           apiGet<any[]>('/api/v1/notices').catch(() => []),
           apiGet<any[]>('/api/v1/tickets').catch(() => []),
           apiGet<any[]>('/api/v1/invoices').catch(() => []),
           apiGet<any[]>('/api/v1/visitor-passes').catch(() => []),
           apiGet<any[]>('/api/v1/polls').catch(() => []),
+          apiGet<any[]>('/api/v1/staff/on-duty').catch(() => []),
         ]);
         if (cancelled) return;
 
@@ -117,6 +120,7 @@ export default function ResidentDashboard() {
           pendingVisitors,
           activePolls,
           recentActivity,
+          onDutyStaff: (onDuty || []).map((s: any) => ({ name: s.name, role: s.role })),
         });
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) router.push('/login');
@@ -233,6 +237,11 @@ export default function ResidentDashboard() {
         </div>
       )}
 
+      {/* ── SOS Emergency Button ────────────────────────────────── */}
+      <div className="mb-8 animate-fade-in-up" style={{ animationDelay: '0.08s' }}>
+        <SOSButton unitId={user?.memberships[0]?.unitId || ''} onTriggered={() => {}} />
+      </div>
+
       {/* ── Quick Actions ─────────────────────────────────────────── */}
       <section className="mb-8 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
         <div className="flex items-center justify-between mb-4">
@@ -252,6 +261,28 @@ export default function ResidentDashboard() {
           <QuickActionBtn icon={Package} label="Packages" onClick={() => router.push('/dashboard/resident/parcels')} />
         </div>
       </section>
+
+      {/* ── Staff on Duty ─────────────────────────────────────────── */}
+      {dashboard.onDutyStaff.length > 0 && (
+        <div className="mb-8 animate-fade-in-up" style={{ animationDelay: '0.12s' }}>
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Shield className="w-4 h-4 text-accent-600" />
+              <h2 className="text-body-sm font-semibold text-gray-900">Staff on Duty</h2>
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-500">
+                {dashboard.onDutyStaff.length} active
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {dashboard.onDutyStaff.map((s, i) => (
+                <span key={i} className="text-caption-xs font-medium px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
+                  {s.name} · {s.role.charAt(0) + s.role.slice(1).toLowerCase()}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Summary stats + Activity ──────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in-up" style={{ animationDelay: '0.15s' }}>
@@ -317,5 +348,117 @@ export default function ResidentDashboard() {
         </div>
       </div>
     </>
+  );
+}
+
+// ── SOS Emergency Button ─────────────────────────────────────────────────
+function SOSButton({ unitId, onTriggered }: { unitId: string; onTriggered: () => void }) {
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [category, setCategory] = useState<string>('OTHER');
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+
+  const categories = [
+    { value: 'MEDICAL', label: 'Medical', emoji: '🏥' },
+    { value: 'FIRE', label: 'Fire', emoji: '🔥' },
+    { value: 'SECURITY', label: 'Security', emoji: '🛡️' },
+    { value: 'OTHER', label: 'Other', emoji: '⚠️' },
+  ];
+
+  const handleTrigger = async () => {
+    if (!unitId) {
+      setError('No unit assigned to your account. Please contact admin.');
+      return;
+    }
+    setSending(true);
+    setError('');
+    try {
+      await apiPost('/api/v1/sos-alerts', { category, unitId });
+      setSent(true);
+      setShowConfirm(false);
+      onTriggered();
+    } catch (err) {
+      if (err instanceof ApiError) setError(err.message);
+      else setError('Failed to send alert. Please try again.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (sent) {
+    return (
+      <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-6 text-center">
+        <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-3">
+          <AlertTriangle className="w-7 h-7 text-red-600" />
+        </div>
+        <h3 className="text-lg font-bold text-red-700 mb-1">Alert Sent</h3>
+        <p className="text-sm text-red-600">All admins and guards have been notified. Help is on the way.</p>
+        <button
+          onClick={() => { setSent(false); setCategory('OTHER'); }}
+          className="mt-4 text-sm text-red-600 underline hover:text-red-700"
+        >
+          Dismiss
+        </button>
+      </div>
+    );
+  }
+
+  if (showConfirm) {
+    return (
+      <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-6">
+        <h3 className="text-lg font-bold text-red-700 mb-3 text-center">Select Emergency Type</h3>
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          {categories.map((cat) => (
+            <button
+              key={cat.value}
+              onClick={() => setCategory(cat.value)}
+              className={`p-3 rounded-xl border-2 text-center transition-all ${
+                category === cat.value
+                  ? 'border-red-500 bg-red-100 text-red-700'
+                  : 'border-gray-200 bg-white text-gray-700 hover:border-red-300'
+              }`}
+            >
+              <span className="text-2xl block mb-1">{cat.emoji}</span>
+              <span className="text-sm font-medium">{cat.label}</span>
+            </button>
+          ))}
+        </div>
+        {error && <p className="text-sm text-red-600 text-center mb-3">{error}</p>}
+        <div className="flex gap-3">
+          <button
+            onClick={handleTrigger}
+            disabled={sending}
+            className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold py-3 px-6 rounded-xl text-base transition-all"
+          >
+            {sending ? 'Sending...' : '🚨 Send SOS Alert'}
+          </button>
+          <button
+            onClick={() => { setShowConfirm(false); setError(''); }}
+            className="px-4 py-3 text-sm text-gray-700 hover:text-gray-900 rounded-xl border border-gray-200 hover:bg-gray-50 transition-all"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => setShowConfirm(true)}
+      className="w-full bg-red-50 hover:bg-red-100 border-2 border-red-200 hover:border-red-400 rounded-2xl p-4 flex items-center gap-4 transition-all group"
+    >
+      <div className="w-14 h-14 rounded-xl bg-red-100 group-hover:bg-red-200 flex items-center justify-center flex-shrink-0 transition-colors">
+        <AlertTriangle className="w-7 h-7 text-red-600" />
+      </div>
+      <div className="text-left flex-1">
+        <h3 className="text-base font-bold text-red-700">SOS Emergency</h3>
+        <p className="text-sm text-red-600">Tap to send an emergency alert to all admins and guards</p>
+      </div>
+      <div className="text-red-400 group-hover:text-red-600 transition-colors">
+        <AlertTriangle className="w-5 h-5" />
+      </div>
+    </button>
   );
 }

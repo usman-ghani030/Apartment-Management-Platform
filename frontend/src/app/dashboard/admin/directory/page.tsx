@@ -141,7 +141,11 @@ export default function AdminDirectoryPage() {
                 </div>
                 <div className="divide-y divide-white/5">
                   {members.map((entry) => (
-                    <div key={entry.userId} className="px-5 py-3.5 flex items-center gap-4 hover:bg-white/[0.02] transition-colors">
+                    <div
+                      key={entry.userId}
+                      className="px-5 py-3.5 flex items-center gap-4 hover:bg-white/[0.02] transition-colors cursor-pointer"
+                      onClick={() => router.push(`/dashboard/admin/directory/${entry.userId}`)}
+                    >
                       <div className="w-9 h-9 bg-accent-50 rounded-full flex items-center justify-center flex-shrink-0">
                         <UserIcon className="w-4 h-4 text-accent-500" />
                       </div>

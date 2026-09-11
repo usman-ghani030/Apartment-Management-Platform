@@ -5,7 +5,8 @@ import { useRouter, usePathname } from 'next/navigation';
 import {
   Building2, Users, FileText, CreditCard, LogOut, Bell,
   CalendarRange, BarChart3, Folder, Clock, Home, UserPlus,
-  QrCode, Scan, Menu, X, Package, Shield, PieChart,
+  QrCode, Scan, Menu, X, Package, Shield, PieChart, LayoutDashboard,
+  Contact, AlertTriangle,
 } from 'lucide-react';
 import { auth, ApiError, apiGet } from '@/lib/api';
 import type { AuthResponse } from '@apartment/shared';
@@ -61,6 +62,12 @@ interface NavItem {
 
 const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
   {
+    label: 'Overview',
+    items: [
+      { icon: LayoutDashboard, label: 'Home', href: '/dashboard/admin' },
+    ],
+  },
+  {
     label: 'Management',
     items: [
       { icon: Building2, label: 'Buildings', href: '/dashboard/admin/buildings' },
@@ -73,7 +80,9 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
     label: 'Operations',
     items: [
       { icon: Shield, label: 'Maintenance', href: '/dashboard/admin/tickets' },
+      { icon: Contact, label: 'Staff', href: '/dashboard/admin/staff' },
       { icon: CalendarRange, label: 'Amenities', href: '/dashboard/admin/amenities' },
+      { icon: AlertTriangle, label: 'SOS Alerts', href: '/dashboard/admin/sos-alerts' },
       { icon: FileText, label: 'Notices', href: '/dashboard/admin/notices' },
       { icon: QrCode, label: 'Visitors', href: '/dashboard/admin/visitors' },
       { icon: Scan, label: 'Security gate', href: '/dashboard/guard' },
@@ -135,9 +144,7 @@ function AdminSidebar({
       >
         {/* Logo */}
         <div className="h-14 flex items-center gap-3 px-5 border-b border-gray-200 flex-shrink-0">
-          <div className="w-8 h-8 rounded-lg bg-accent-600 flex items-center justify-center shadow-sm flex-shrink-0">
-            <Building2 className="w-4 h-4 text-white" />
-          </div>
+          <img src="/logo3.png" alt="OmniHome" className="h-10 w-auto object-contain flex-shrink-0" />
           <span className="text-body-sm font-semibold text-gray-900">OmniHome</span>
           <button onClick={onClose} className="ml-auto p-1 rounded-lg hover:bg-gray-50 lg:hidden">
             <X className="w-4 h-4 text-gray-700" />
@@ -215,7 +222,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           (m) => m.role === 'COMMITTEE_ADMIN' || m.role === 'SUPER_ADMIN'
         );
         if (!isAdmin) {
-          router.push('/dashboard/resident');
+          router.push('/login');
           return;
         }
         if (cancelled) return;
@@ -302,7 +309,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleLogout = async () => {
     await auth.logout();
@@ -333,7 +341,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
         {/* Top Bar */}
         <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200 lg:ml-64">
-          <div className="h-14 flex items-center justify-between px-4">
+          <div className="h-20 flex items-center justify-between px-4">
             <div className="flex items-center gap-3">
               {/* Hamburger for mobile */}
               <button
@@ -343,9 +351,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 <Menu className="w-4.5 h-4.5 text-gray-700" />
               </button>
               <button onClick={() => router.push('/')} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-                <div className="w-8 h-8 rounded-lg bg-accent-600 flex items-center justify-center shadow-sm">
-                  <Building2 className="w-4 h-4 text-white" />
-                </div>
+                <img src="/logo3.png" alt="OmniHome" className="h-16 w-auto object-contain" />
                 <div className="text-left">
                   <p className="text-body-sm font-semibold text-gray-900">{society?.societyName || 'Dashboard'}</p>
                   <p className="text-caption-xs text-gray-700">Committee Admin</p>
@@ -358,8 +364,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 <Bell className="w-4.5 h-4.5" />
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-accent-500 ring-2 ring-white" />
               </button>
-              <button onClick={handleLogout} className="p-2 rounded-lg transition-colors text-gray-700 hover:text-status-danger hover:bg-gray-50">
-                <LogOut className="w-4.5 h-4.5" />
+              <button onClick={handleLogout} className="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-gray-700 hover:text-status-danger hover:bg-gray-50">
+                <LogOut className="w-4 h-4" />
+                <span className="text-body-sm font-medium hidden sm:inline">Logout</span>
               </button>
             </div>
           </div>

@@ -154,6 +154,11 @@ router.post('/photo', requireAuth, loadMembership, requireRole('create', 'parcel
 // ── GET /api/v1/parcels/photo/:filename — serve a parcel photo ─────────────
 router.get('/photo/:filename', async (req, res, next) => {
   try {
+    // Only ever serve files we wrote ourselves — uploaded names are sanitized
+    // to this charset, so anything else (path separators, "..") is a traversal attempt.
+    if (!/^[a-zA-Z0-9._-]+$/.test(req.params.filename)) {
+      throw new AppError(ErrorCodes.VALIDATION_ERROR, 400, 'Invalid filename');
+    }
     const filePath = path.join(PARCEL_UPLOAD_DIR, req.params.filename);
     if (!fs.existsSync(filePath)) {
       throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Photo not found');

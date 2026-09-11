@@ -22,7 +22,9 @@ export type AuthResource =
   | 'parcel'
   | 'vendor'
   | 'analytics'
-  | 'audit_log';
+  | 'audit_log'
+  | 'staff'
+  | 'sos_alert';
 
 /**
  * Actions that can be performed on resources.
@@ -143,6 +145,19 @@ const PERMISSION_MATRIX: Record<AuthResource, Partial<Record<AuthAction, Role[]>
   // Phase 7: analytics dashboard — admins only
   analytics: {
     read: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
+  },
+  // Phase 8: staff management — admins CRUD, residents read on-duty
+  staff: {
+    create: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
+    read: ['SUPER_ADMIN', 'COMMITTEE_ADMIN', 'RESIDENT'],
+    update: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
+    delete: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
+  },
+  // Phase 8: SOS emergency alerts — residents trigger, admins manage
+  sos_alert: {
+    create: ['SUPER_ADMIN', 'COMMITTEE_ADMIN', 'RESIDENT'],
+    read: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
+    update: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
   },
 };
 

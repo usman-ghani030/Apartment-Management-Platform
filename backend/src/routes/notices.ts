@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { AppError, ErrorCodes } from '../lib/app-error';
 import { sendSuccess, sendPaginated } from '../lib/response';
 import { requireAuth, loadMembership } from '../middleware/auth';
@@ -25,6 +25,8 @@ function formatNotice(notice: NoticeWithAuthor, readCount?: number, hasRead?: bo
     title: notice.title,
     content: notice.content,
     category: notice.category,
+    targetType: (notice as any).targetType ?? 'ALL_UNITS',
+    targetUnitIds: (notice as any).targetUnitIds ?? null,
     publishedAt: notice.publishedAt?.toISOString() ?? null,
     createdAt: notice.createdAt.toISOString(),
     updatedAt: notice.updatedAt.toISOString(),
@@ -52,6 +54,8 @@ router.post(
           title: input.title,
           content: input.content,
           category: input.category,
+          targetType: input.targetType,
+          targetUnitIds: input.targetType === 'SPECIFIC_UNITS' ? (input.targetUnitIds ?? []) : Prisma.DbNull,
           publishedAt: input.publish ? new Date() : null,
         },
         include: { author: { select: { name: true } } },
@@ -63,7 +67,13 @@ router.post(
         action: input.publish ? 'NOTICE_PUBLISHED' : 'NOTICE_CREATED',
         entityType: 'notice',
         entityId: notice.id,
-        after: { title: notice.title, category: notice.category, published: !!input.publish },
+        after: {
+          title: notice.title,
+          category: notice.category,
+          published: !!input.publish,
+          targetType: input.targetType,
+          targetUnitIds: input.targetType === 'SPECIFIC_UNITS' ? input.targetUnitIds : null,
+        },
       });
 
       if (input.publish) {
@@ -105,8 +115,25 @@ router.get(
         deletedAt: null,
         ...(isAdmin ? {} : { publishedAt: { not: null } }),
       };
-      // For residents, only show published notices
-      // For admins, show all (including drafts)
+
+      // Phase 8: targeted notices — residents only see notices targeted to ALL_UNITS
+      // or to their specific unit. Admins see everything.
+      let userUnitId: string | null = null;
+      if (!isAdmin && req.user) {
+        const userMembership = await prisma.membership.findFirst({
+          where: {
+            userId: req.user.id,
+            societyId,
+            status: 'ACTIVE',
+            deletedAt: null,
+          },
+        });
+        userUnitId = userMembership?.unitId ?? null;
+        // Filter: residents see ALL_UNITS notices + SPECIFIC_UNITS where their unit is in the array
+        // We can't use Prisma JSON path filtering here, so we fetch ALL_UNITS in the query
+        // and filter SPECIFIC_UNITS in application code below.
+        where.targetType = { in: ['ALL_UNITS', 'SPECIFIC_UNITS'] };
+      }
 
       if (cursor) {
         where.createdAt = { lt: new Date(cursor) };
@@ -120,7 +147,18 @@ router.get(
       });
 
       const hasMore = notices.length > limit;
-      const data = notices.slice(0, limit).map((n: NoticeWithAuthor) => formatNotice(n));
+      let data = notices.slice(0, limit).map((n: NoticeWithAuthor) => formatNotice(n));
+
+      // Phase 8: post-filter SPECIFIC_UNITS notices for residents
+      if (!isAdmin && userUnitId) {
+        data = data.filter((n) => {
+          if (n.targetType === 'ALL_UNITS') return true;
+          if (n.targetType === 'SPECIFIC_UNITS' && n.targetUnitIds) {
+            return n.targetUnitIds.includes(userUnitId!);
+          }
+          return false;
+        });
+      }
 
       // For residents, track read receipts
       if (!isAdmin && req.user) {
@@ -171,6 +209,25 @@ router.get(
         throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Notice not found');
       }
 
+      // Phase 8: targeted notices — residents can only view notices targeted to them
+      if (!isAdmin && req.user) {
+        const targetType = (notice as any).targetType ?? 'ALL_UNITS';
+        if (targetType === 'SPECIFIC_UNITS') {
+          const targetUnitIds: string[] = (notice as any).targetUnitIds ?? [];
+          const userMembership = await prisma.membership.findFirst({
+            where: {
+              userId: req.user.id,
+              societyId,
+              status: 'ACTIVE',
+              deletedAt: null,
+            },
+          });
+          if (!userMembership?.unitId || !targetUnitIds.includes(userMembership.unitId)) {
+            throw new AppError(ErrorCodes.FORBIDDEN, 403, 'This notice is not targeted to your unit');
+          }
+        }
+      }
+
       // Get read count
       const readCount = await prisma.noticeReadReceipt.count({
         where: { noticeId: notice.id },
@@ -213,6 +270,7 @@ router.patch(
 
       const existing = await prisma.notice.findFirst({
         where: { id: req.params.id, societyId, deletedAt: null },
+        include: { author: { select: { name: true } } },
       });
       if (!existing) {
         throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Notice not found');
@@ -222,6 +280,10 @@ router.patch(
       if (input.title !== undefined) updateData.title = input.title;
       if (input.content !== undefined) updateData.content = input.content;
       if (input.category !== undefined) updateData.category = input.category;
+      if (input.targetType !== undefined) updateData.targetType = input.targetType;
+      if (input.targetUnitIds !== undefined) {
+        updateData.targetUnitIds = input.targetType === 'SPECIFIC_UNITS' ? (input.targetUnitIds ?? []) : Prisma.DbNull;
+      }
       if (input.publish === true && !existing.publishedAt) {
         updateData.publishedAt = new Date();
       }
@@ -238,8 +300,16 @@ router.patch(
         action: 'NOTICE_UPDATED',
         entityType: 'notice',
         entityId: notice.id,
-        before: { title: existing.title, publishedAt: existing.publishedAt?.toISOString() ?? null },
-        after: { title: notice.title, publishedAt: notice.publishedAt?.toISOString() ?? null },
+        before: {
+          title: existing.title,
+          publishedAt: existing.publishedAt?.toISOString() ?? null,
+          targetType: (existing as any).targetType ?? 'ALL_UNITS',
+        },
+        after: {
+          title: notice.title,
+          publishedAt: notice.publishedAt?.toISOString() ?? null,
+          targetType: (notice as any).targetType ?? 'ALL_UNITS',
+        },
       });
 
       sendSuccess(res, formatNotice(notice));
@@ -262,6 +332,7 @@ router.delete(
 
       const existing = await prisma.notice.findFirst({
         where: { id: req.params.id, societyId, deletedAt: null },
+        include: { author: { select: { name: true } } },
       });
       if (!existing) {
         throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Notice not found');

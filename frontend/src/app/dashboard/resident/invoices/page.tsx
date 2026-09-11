@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Banknote, CreditCard, AlertCircle, CheckCircle, Clock, XCircle, ShieldAlert, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Banknote, CreditCard, AlertCircle, CheckCircle, Clock, XCircle, ShieldAlert, RefreshCw, Search } from 'lucide-react';
 import { ApiError, apiGet, apiPost } from '@/lib/api';
 import type { InvoiceResponse } from '@apartment/shared';
 
@@ -32,6 +32,7 @@ export default function ResidentInvoicesPage() {
   const [disputeReason, setDisputeReason] = useState('');
   const [disputingId, setDisputingId] = useState<string | null>(null);
   const [banner, setBanner] = useState<Banner>(null);
+  const [search, setSearch] = useState('');
   const verifiedInvoice = useRef<string | null>(null);
 
   const fetchInvoices = useCallback(async () => {
@@ -173,11 +174,43 @@ export default function ResidentInvoicesPage() {
 
         {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
 
+        {/* Search */}
+        {invoices.length > 0 && (
+          <div className="relative mb-6">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-700" />
+            <input
+              type="text"
+              placeholder="Search by title, invoice number, or status..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-10 pr-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50 focus:ring-1 focus:ring-accent-500/20 transition-all"
+            />
+          </div>
+        )}
+
         {invoices.length === 0 ? (
           <div className="text-center py-20"><Banknote className="w-12 h-12 text-gray-700 mx-auto mb-4" /><p className="text-gray-700">No invoices</p><p className="text-gray-700 text-sm mt-1">Your society hasn't issued any invoices yet</p></div>
-        ) : (
+        ) : (() => {
+          const q = search.toLowerCase();
+          const filtered = invoices.filter((inv) =>
+            !search ||
+            inv.title.toLowerCase().includes(q) ||
+            inv.invoiceNumber.toLowerCase().includes(q) ||
+            inv.status.toLowerCase().includes(q) ||
+            inv.description?.toLowerCase().includes(q)
+          );
+          if (filtered.length === 0) {
+            return (
+              <div className="text-center py-12">
+                <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-500">No invoices match "{search}"</p>
+                <p className="text-gray-400 text-sm mt-1">Try a different search term</p>
+              </div>
+            );
+          }
+          return (
           <div className="space-y-4">
-            {invoices.map((inv) => (
+            {filtered.map((inv) => (
               <div key={inv.id} className="bg-white border border-gray-200 rounded-xl shadow-sm p-5 border border-gray-200">
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
@@ -231,7 +264,8 @@ export default function ResidentInvoicesPage() {
               </div>
             ))}
           </div>
-        )}
+          );
+        })()}
       </main>
     </div>
   );

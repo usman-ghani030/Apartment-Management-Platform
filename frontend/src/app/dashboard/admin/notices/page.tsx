@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, FileText, Send, Trash2, Eye, Clock, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Plus, FileText, Send, Trash2, Eye, Clock, CheckCircle, Target, Building2 } from 'lucide-react';
 import { ApiError, apiPost, apiGet, apiPatch, apiDelete } from '@/lib/api';
 import type { NoticeResponse } from '@apartment/shared';
 
@@ -15,6 +15,9 @@ export default function AdminNoticesPage() {
   const [content, setContent] = useState('');
   const [category, setCategory] = useState('general');
   const [publish, setPublish] = useState(false);
+  const [targetType, setTargetType] = useState<'ALL_UNITS' | 'SPECIFIC_UNITS'>('ALL_UNITS');
+  const [targetUnitIds, setTargetUnitIds] = useState<string[]>([]);
+  const [units, setUnits] = useState<Array<{ id: string; unitNumber: string; buildingName: string }>>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -31,6 +34,16 @@ export default function AdminNoticesPage() {
 
   useEffect(() => {
     fetchNotices();
+    // Load units for targeting
+    apiGet<any[]>('/api/v1/units')
+      .then((data) => {
+        setUnits((data || []).map((u: any) => ({
+          id: u.id,
+          unitNumber: u.unitNumber,
+          buildingName: u.building?.name || '',
+        })));
+      })
+      .catch(() => {});
   }, [fetchNotices]);
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -38,11 +51,17 @@ export default function AdminNoticesPage() {
     setSubmitting(true);
     setError('');
     try {
-      await apiPost<NoticeResponse>('/api/v1/notices', { title, content, category, publish });
+      await apiPost<NoticeResponse>('/api/v1/notices', {
+        title, content, category, publish,
+        targetType,
+        targetUnitIds: targetType === 'SPECIFIC_UNITS' ? targetUnitIds : undefined,
+      });
       setTitle('');
       setContent('');
       setCategory('general');
       setPublish(false);
+      setTargetType('ALL_UNITS');
+      setTargetUnitIds([]);
       setShowForm(false);
       fetchNotices();
     } catch (err) {
@@ -119,6 +138,7 @@ export default function AdminNoticesPage() {
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="Notice title"
                   required
+                  maxLength={200}
                   className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50 focus:ring-1 focus:ring-accent-500/20 transition-all"
                 />
               </div>
@@ -143,9 +163,68 @@ export default function AdminNoticesPage() {
                   onChange={(e) => setContent(e.target.value)}
                   placeholder="Write the notice content..."
                   required
+                  maxLength={10000}
                   rows={6}
                   className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50 focus:ring-1 focus:ring-accent-500/20 transition-all resize-y"
                 />
+              </div>
+              {/* Targeting */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Target Audience</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setTargetType('ALL_UNITS'); setTargetUnitIds([]); }}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
+                      targetType === 'ALL_UNITS'
+                        ? 'bg-accent-50 border-accent-300 text-accent-600'
+                        : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <Target className="w-4 h-4" /> All Units
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTargetType('SPECIFIC_UNITS')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
+                      targetType === 'SPECIFIC_UNITS'
+                        ? 'bg-accent-50 border-accent-300 text-accent-600'
+                        : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <Building2 className="w-4 h-4" /> Specific Units
+                  </button>
+                </div>
+                {targetType === 'SPECIFIC_UNITS' && (
+                  <div className="mt-3 max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-3 space-y-1.5 bg-gray-50">
+                    {units.length === 0 ? (
+                      <p className="text-xs text-gray-500">No units available</p>
+                    ) : (
+                      units.map((u) => (
+                        <label key={u.id} className="flex items-center gap-2 cursor-pointer py-1 px-2 rounded hover:bg-gray-100 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={targetUnitIds.includes(u.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setTargetUnitIds([...targetUnitIds, u.id]);
+                              } else {
+                                setTargetUnitIds(targetUnitIds.filter((id) => id !== u.id));
+                              }
+                            }}
+                            className="w-4 h-4 rounded border-gray-300 bg-white text-accent-600 focus:ring-accent-500"
+                          />
+                          <span className="text-sm text-gray-700">Unit {u.unitNumber}{u.buildingName ? ` (${u.buildingName})` : ''}</span>
+                        </label>
+                      ))
+                    )}
+                    {targetUnitIds.length > 0 && (
+                      <p className="text-xs text-gray-500 pt-1 border-t border-gray-200">
+                        {targetUnitIds.length} unit{targetUnitIds.length > 1 ? 's' : ''} selected
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -195,6 +274,13 @@ export default function AdminNoticesPage() {
                       <span className="text-xs font-medium text-accent-500 bg-accent-50 rounded-full px-2.5 py-0.5 capitalize">
                         {notice.category}
                       </span>
+                      {notice.targetType === 'SPECIFIC_UNITS' ? (
+                        <span className="text-xs font-medium text-purple-500 bg-purple-50 rounded-full px-2 py-0.5 flex items-center gap-1">
+                          <Target className="w-3 h-3" /> {notice.targetUnitIds?.length || 0} unit{(notice.targetUnitIds?.length || 0) > 1 ? 's' : ''}
+                        </span>
+                      ) : (
+                        <span className="text-xs font-medium text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">All units</span>
+                      )}
                       {notice.publishedAt ? (
                         <span className="text-xs text-green-400 flex items-center gap-1">
                           <CheckCircle className="w-3 h-3" /> Published

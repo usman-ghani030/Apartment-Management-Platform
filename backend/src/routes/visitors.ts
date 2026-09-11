@@ -6,6 +6,7 @@ import { requireAuth, loadMembership } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { logAudit } from '../lib/audit';
 import { randomUUID } from 'crypto';
+import { z } from 'zod';
 import { CreateVisitorPassSchema, UpdateVisitorPassSchema } from '@apartment/shared';
 import type { VisitorPassResponse, GateLogResponse } from '@apartment/shared';
 
@@ -218,11 +219,14 @@ router.post('/verify/:qrToken', requireAuth, loadMembership, async (req, res, ne
 });
 
 // ── POST /api/v1/visitors/:id/gate — log gate entry/exit ──────────────────
+const GateLogEntrySchema = z.object({
+  action: z.enum(['ENTRY', 'EXIT'], { errorMap: () => ({ message: 'Action must be ENTRY or EXIT' }) }),
+  notes: z.string().max(500, 'Notes must be under 500 characters').optional().nullable(),
+});
+
 router.post('/:id/gate', requireAuth, loadMembership, async (req, res, next) => {
   try {
-    const { action: rawAction, notes } = req.body as { action: string; notes?: string };
-    if (!rawAction || !['ENTRY', 'EXIT'].includes(rawAction)) throw new AppError(ErrorCodes.VALIDATION_ERROR, 400, 'Action must be ENTRY or EXIT');
-    const action = rawAction as 'ENTRY' | 'EXIT';
+    const { action, notes } = GateLogEntrySchema.parse(req.body);
 
     const societyId = req.membership?.societyId;
     if (!societyId) throw new AppError(ErrorCodes.MEMBERSHIP_REQUIRED, 403, 'Active membership required');
@@ -248,7 +252,7 @@ router.post('/:id/gate', requireAuth, loadMembership, async (req, res, next) => 
     const gateLog = await prisma.gateLog.create({
       data: {
         societyId, visitorPassId: pass.id, unitId: pass.unitId,
-        action, guardId: req.user!.id, notes: notes || null,
+        action, guardId: req.user!.id, notes: notes ?? null,
       },
     });
 

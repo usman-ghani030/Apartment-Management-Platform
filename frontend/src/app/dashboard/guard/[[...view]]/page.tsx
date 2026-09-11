@@ -1,0 +1,335 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
+import { CheckCircle, XCircle, LogOut, Clock, User, PackagePlus, X } from 'lucide-react';
+import { ApiError, apiPost, apiGet, apiUpload } from '@/lib/api';
+import type { VisitorPassResponse } from '@apartment/shared';
+
+type GuardView = 'scan' | 'parcels' | 'recent';
+
+function viewFromPath(pathname: string): GuardView {
+  const seg = pathname.replace('/dashboard/guard', '').split('/').filter(Boolean)[0];
+  if (seg === 'parcels') return 'parcels';
+  if (seg === 'activity') return 'recent';
+  return 'scan';
+}
+
+export default function GuardDashboard() {
+  const pathname = usePathname();
+  const view = viewFromPath(pathname);
+
+  const [qrToken, setQrToken] = useState('');
+  const [pass, setPass] = useState<VisitorPassResponse | null>(null);
+  const [verifyError, setVerifyError] = useState('');
+  const [actionMsg, setActionMsg] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [recording, setRecording] = useState(false);
+
+  // Parcel arrival state
+  const [units, setUnits] = useState<{ id: string; unitNumber: string; buildingName: string }[]>([]);
+  const [parcelUnitId, setParcelUnitId] = useState('');
+  const [parcelDescription, setParcelDescription] = useState('');
+  const [parcelPhoto, setParcelPhoto] = useState<File | null>(null);
+  const [parcelPreview, setParcelPreview] = useState('');
+  const [parcelMsg, setParcelMsg] = useState('');
+  const [parcelErr, setParcelErr] = useState('');
+  const [loggingParcel, setLoggingParcel] = useState(false);
+
+  // Load units for parcel arrival logging
+  useEffect(() => {
+    let cancelled = false;
+    apiGet<any[]>('/api/v1/units')
+      .then((data) => {
+        if (cancelled) return;
+        setUnits((data || []).map((u) => ({
+          id: u.id,
+          unitNumber: u.unitNumber,
+          buildingName: u.buildingName || '',
+        })));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // Reset transient state when switching between views
+  useEffect(() => {
+    setPass(null);
+    setVerifyError('');
+    setActionMsg('');
+    setParcelMsg('');
+    setParcelErr('');
+  }, [view]);
+
+  const handleVerify = async () => {
+    if (!qrToken.trim()) return;
+    setVerifying(true); setVerifyError(''); setPass(null); setActionMsg('');
+
+    try {
+      const data = await apiPost<VisitorPassResponse>(`/api/v1/visitors/verify/${qrToken.trim()}`);
+      setPass(data);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setVerifyError(err.message);
+      } else {
+        setVerifyError('Failed to verify QR code');
+      }
+    } finally { setVerifying(false); }
+  };
+
+  const handleGateAction = async (action: 'ENTRY' | 'EXIT') => {
+    if (!pass) return;
+    setRecording(true); setActionMsg('');
+
+    try {
+      await apiPost(`/api/v1/visitors/${pass.id}/gate`, { action });
+      setActionMsg(action === 'ENTRY' ? '✓ Check-in recorded' : '✓ Check-out recorded');
+      setPass(null);
+      setQrToken('');
+    } catch (err) {
+      if (err instanceof ApiError) setActionMsg(`Error: ${err.message}`);
+      else setActionMsg('Failed to record');
+    } finally { setRecording(false); }
+  };
+
+  const handleLogParcel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!parcelUnitId || !parcelDescription.trim()) return;
+    setLoggingParcel(true); setParcelMsg(''); setParcelErr('');
+    try {
+      let photoUrl = '';
+      if (parcelPhoto) {
+        const formData = new FormData();
+        formData.append('photo', parcelPhoto);
+        const res = await apiUpload<{ url: string }>('/api/v1/parcels/photo', formData);
+        photoUrl = res.url;
+      }
+      await apiPost('/api/v1/parcels', {
+        unitId: parcelUnitId,
+        description: parcelDescription.trim(),
+        ...(photoUrl ? { photoUrl } : {}),
+      });
+      setParcelMsg('✓ Parcel arrival logged — resident notified');
+      setParcelUnitId(''); setParcelDescription(''); setParcelPhoto(null); setParcelPreview('');
+    } catch (err) {
+      if (err instanceof ApiError) setParcelErr(err.message);
+      else setParcelErr('Failed to log parcel');
+    } finally { setLoggingParcel(false); }
+  };
+
+  return (
+    <>
+      {view === 'parcels' && (
+        <>
+          {/* Log Parcel Arrival */}
+          <form onSubmit={handleLogParcel} className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <PackagePlus className="w-5 h-5 text-accent-600" />
+              <h2 className="text-title-sm">Log parcel arrival</h2>
+            </div>
+
+            <label className="block text-caption text-gray-700 mb-1">Unit *</label>
+            <select
+              value={parcelUnitId}
+              onChange={(e) => setParcelUnitId(e.target.value)}
+              required
+              className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-body-sm text-gray-900 focus:outline-none focus:border-accent-500/50 mb-4"
+            >
+              <option value="">Select a unit...</option>
+              {units.map((u) => (
+                <option key={u.id} value={u.id}>
+                  Unit {u.unitNumber}{u.buildingName ? ` (${u.buildingName})` : ''}
+                </option>
+              ))}
+            </select>
+
+            <label className="block text-caption text-gray-700 mb-1">Description *</label>
+            <input
+              type="text"
+              value={parcelDescription}
+              onChange={(e) => setParcelDescription(e.target.value)}
+              placeholder="e.g. Amazon package, large box from FedEx"
+              required
+              className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-body-sm text-gray-900 placeholder-neutral-500 focus:outline-none focus:border-accent-500/50 mb-4"
+            />
+
+            <label className="block text-caption text-gray-700 mb-1">Photo (optional)</label>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              onChange={(e) => {
+                const f = e.target.files?.[0] || null;
+                setParcelPhoto(f);
+                setParcelPreview(f ? URL.createObjectURL(f) : '');
+              }}
+              className="w-full text-body-sm text-gray-700 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-body-sm file:font-medium file:bg-accent-600 file:text-white hover:file:bg-accent-700 mb-4"
+            />
+            {parcelPreview && (
+              <div className="relative inline-block mb-4">
+                <img src={parcelPreview} alt="Parcel photo preview" className="w-28 h-28 object-cover rounded-lg border border-gray-200" />
+                <button
+                  type="button"
+                  onClick={() => { setParcelPhoto(null); setParcelPreview(''); }}
+                  className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-400 transition-colors"
+                  title="Remove photo"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+
+            {parcelErr && (
+              <div className="bg-status-danger/10 border border-status-danger/20 text-status-danger text-body-sm rounded-xl px-5 py-4 mb-4 flex items-center gap-3">
+                <XCircle className="w-5 h-5 flex-shrink-0" />
+                <span>{parcelErr}</span>
+              </div>
+            )}
+            {parcelMsg && (
+              <div className="bg-status-success/10 border border-status-success/20 text-status-success text-body-sm rounded-xl px-5 py-4 mb-4 flex items-center gap-3">
+                <CheckCircle className="w-5 h-5 flex-shrink-0" />
+                <span>{parcelMsg}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loggingParcel || !parcelUnitId || !parcelDescription.trim()}
+              className="w-full bg-accent-600 hover:bg-accent-700 disabled:opacity-50 text-white rounded-xl py-5 text-body font-semibold transition-all flex items-center justify-center gap-2 min-h-[56px]"
+            >
+              <PackagePlus className="w-6 h-6" />
+              {loggingParcel ? 'Logging...' : 'Log Arrival'}
+            </button>
+          </form>
+        </>
+      )}
+
+      {view === 'scan' && (
+        <>
+          {/* QR Code Input */}
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-6">
+            <h2 className="text-title-sm mb-4">Verify visitor pass</h2>
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={qrToken}
+                onChange={(e) => setQrToken(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleVerify()}
+                placeholder="Scan QR code or enter token manually"
+                className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-body-sm text-gray-900 placeholder-neutral-500 focus:outline-none focus:border-accent-500/50"
+                autoFocus
+              />
+              <button
+                onClick={handleVerify}
+                disabled={verifying || !qrToken.trim()}
+                className="bg-accent-600 hover:bg-accent-700 disabled:opacity-50 text-white rounded-lg px-6 py-3 text-body-sm font-medium transition-all whitespace-nowrap"
+              >
+                {verifying ? 'Verifying...' : 'Verify'}
+              </button>
+            </div>
+          </div>
+
+          {/* Status Messages */}
+          {verifyError && (
+            <div className="bg-status-danger/10 border border-status-danger/20 text-status-danger text-body-sm rounded-xl px-5 py-4 mb-4 flex items-center gap-3">
+              <XCircle className="w-5 h-5 flex-shrink-0" />
+              <span>{verifyError}</span>
+            </div>
+          )}
+          {actionMsg && (
+            <div className={`text-body-sm rounded-xl px-5 py-4 mb-4 flex items-center gap-3 ${
+              actionMsg.startsWith('✓')
+                ? 'bg-status-success/10 border border-status-success/20 text-status-success'
+                : 'bg-status-danger/10 border border-status-danger/20 text-status-danger'
+            }`}>
+              <span>{actionMsg}</span>
+            </div>
+          )}
+
+          {/* Visitor Details Card */}
+          {pass && (
+            <div className="bg-white border-2 border-accent-500/30 rounded-xl shadow-sm p-6 mb-6">
+              <div className="flex items-center gap-4 mb-5">
+                <div className="w-14 h-14 bg-accent-50 rounded-full flex items-center justify-center">
+                  <User className="w-7 h-7 text-accent-600" />
+                </div>
+                <div>
+                  <h3 className="text-display-sm">{pass.visitorName}</h3>
+                  <span className={`text-caption-xs font-medium px-2 py-0.5 rounded-full ${
+                    pass.status === 'APPROVED' ? 'bg-status-info/10 text-status-info' :
+                    pass.status === 'CHECKED_IN' ? 'bg-status-success/10 text-status-success' :
+                    pass.status === 'PENDING' ? 'bg-status-warning/10 text-status-warning' :
+                    'bg-gray-100 text-gray-700'
+                  }`}>{pass.status}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-body-sm mb-5">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-caption-xs text-gray-700 uppercase tracking-wider mb-1">Unit</p>
+                  <p className="font-medium text-gray-900">{pass.unitNumber}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-caption-xs text-gray-700 uppercase tracking-wider mb-1">Resident</p>
+                  <p className="font-medium text-gray-900">{pass.residentName}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-caption-xs text-gray-700 uppercase tracking-wider mb-1">Phone</p>
+                  <p className="font-medium text-gray-900">{pass.visitorPhone}</p>
+                </div>
+                {pass.vehicleNumber && (
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-caption-xs text-gray-700 uppercase tracking-wider mb-1">Vehicle</p>
+                    <p className="font-medium text-gray-900">{pass.vehicleNumber}</p>
+                  </div>
+                )}
+              </div>
+
+              {pass.purpose && (
+                <div className="bg-gray-50 rounded-lg p-3 text-body-sm mb-5">
+                  <p className="text-caption-xs text-gray-700 uppercase tracking-wider mb-1">Purpose</p>
+                  <p className="text-gray-900">{pass.purpose}</p>
+                </div>
+              )}
+
+              {/* Gate Action Buttons - large touch targets */}
+              <div className="flex gap-3">
+                {(pass.status === 'APPROVED' || pass.status === 'PENDING') && (
+                  <button
+                    onClick={() => handleGateAction('ENTRY')}
+                    disabled={recording}
+                    className="flex-1 bg-accent-600 hover:bg-accent-700 disabled:opacity-50 text-white rounded-xl py-5 text-body font-semibold transition-all flex items-center justify-center gap-2 min-h-[56px]"
+                  >
+                    <CheckCircle className="w-6 h-6" />
+                    {recording ? 'Recording...' : 'Check In'}
+                  </button>
+                )}
+                {pass.status === 'CHECKED_IN' && (
+                  <button
+                    onClick={() => handleGateAction('EXIT')}
+                    disabled={recording}
+                    className="flex-1 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 text-white rounded-xl py-5 text-body font-semibold transition-all flex items-center justify-center gap-2 min-h-[56px]"
+                  >
+                    <LogOut className="w-6 h-6" />
+                    {recording ? 'Recording...' : 'Check Out'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Quick instructions */}
+          <p className="text-center text-caption text-gray-700">
+            Scan the visitor&apos;s QR code or type the token above
+          </p>
+        </>
+      )}
+
+      {view === 'recent' && (
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 text-center">
+          <Clock className="w-8 h-8 text-gray-700 mx-auto mb-2" />
+          <p className="text-body-sm text-gray-700">Recent gate activity will appear here</p>
+        </div>
+      )}
+    </>
+  );
+}

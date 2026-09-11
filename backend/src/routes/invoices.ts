@@ -129,6 +129,30 @@ router.get('/', requireAuth, loadMembership, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── DELETE /api/v1/invoices/:id ─────────────────────────────────────────────
+router.delete('/:id', requireAuth, loadMembership, requireRole('delete', 'invoice'), async (req, res, next) => {
+  try {
+    const societyId = req.membership!.societyId;
+
+    const existing = await prisma.invoice.findFirst({ where: { id: req.params.id, societyId, deletedAt: null } });
+    if (!existing) throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Invoice not found');
+    if (existing.status === 'PAID') throw new AppError(ErrorCodes.CONFLICT, 409, 'Cannot delete a paid invoice — mark it as CANCELLED instead');
+
+    await prisma.invoice.update({
+      where: { id: req.params.id },
+      data: { deletedAt: new Date() },
+    });
+
+    await logAudit({
+      societyId, actorUserId: req.user!.id, action: 'INVOICE_DELETED',
+      entityType: 'invoice', entityId: existing.id,
+      before: { invoiceNumber: existing.invoiceNumber, title: existing.title, amount: existing.amount, status: existing.status },
+    });
+
+    sendSuccess(res, { message: 'Invoice deleted' });
+  } catch (err) { next(err); }
+});
+
 // ── GET /api/v1/invoices/:id ───────────────────────────────────────────────
 router.get('/:id', requireAuth, loadMembership, async (req, res, next) => {
   try {

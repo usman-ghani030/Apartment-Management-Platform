@@ -26,6 +26,15 @@ enum UnitType {
   VACANT
 }
 
+enum BedroomType {
+  STUDIO
+  ONE_BED
+  TWO_BED
+  THREE_BED
+  FOUR_BED
+  FOUR_PLUS_BED
+}
+
 enum InvoiceStatus {
   DRAFT
   ISSUED
@@ -210,6 +219,8 @@ model Society {
   timezone  String   @default("UTC")
   // Phase 7: how many days before the due date to send the automated dues reminder
   dueReminderDays Int      @default(3)
+  // Phase 8: day-of-month for recurring billing cycle (1-28, null = disabled)
+  billingDayOfMonth Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -229,6 +240,8 @@ model Society {
   documentFolders DocumentFolder[]
   documents       Document[]
   parcels      Parcel[]
+  staff        Staff[]
+  sosAlerts    SOSAlert[]
   invoiceReminders InvoiceReminder[]
   auditLogs    AuditLog[]
 }
@@ -256,6 +269,12 @@ model Unit {
   unitNumber String
   floor      Int
   type       UnitType
+  // Flat category for bedroom configuration
+  bedroomType BedroomType?
+  // Primary contact info (fallback when no resident account linked)
+  primaryContactName  String?
+  primaryContactEmail String?
+  primaryContactPhone String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
   deletedAt  DateTime? // Soft delete support
@@ -268,18 +287,29 @@ model Unit {
   gateLogs      GateLog[]
   votes         Vote[]
   parcels      Parcel[]
+  sosAlerts    SOSAlert[]
 
   @@index([societyId])
   @@index([buildingId])
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
+  id           String    @id @default(uuid())
+  email        String    @unique
   name         String
-  passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  // Nullable for Google-only accounts (never set a password)
+  passwordHash String?
+  // Google Sign-In: the Google account ID (`sub`) once linked to this user
+  googleId     String?   @unique
+  // Set to true when Google has verified the email ownership
+  emailVerified Boolean  @default(false)
+  // Bumped on password reset to invalidate every outstanding refresh token
+  // (refresh JWTs carry the version they were signed at — see ADR 001 flow)
+  tokenVersion Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  passwordResetTokens PasswordResetToken[]
 
   memberships  Membership[]
   notices      Notice[]
@@ -294,6 +324,8 @@ model User {
   documents     Document[]
   parcelsLoggedBy   Parcel[] @relation("ParcelLoggedBy")
   parcelsCollected  Parcel[] @relation("ParcelCollectedBy")
+  sosAlertsTriggered SOSAlert[] @relation("SOSAlertTriggeredBy")
+  sosAlertsResolved  SOSAlert[] @relation("SOSAlertResolvedBy")
 }
 
 model Amenity {
@@ -369,6 +401,8 @@ model Invoice {
   status        InvoiceStatus @default(ISSUED)
   periodStart   DateTime?
   periodEnd     DateTime?
+  // Phase 8: billing period marker for idempotent recurring billing (e.g. "2026-09")
+  billingPeriod String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   deletedAt     DateTime?
@@ -376,6 +410,7 @@ model Invoice {
   payments Payment[]
   invoiceReminders InvoiceReminder[]
 
+  @@unique([societyId, unitId, billingPeriod], name: "unique_billing_period")
   @@index([societyId, status])
   @@index([societyId, unitId])
   @@index([unitId])
@@ -412,6 +447,9 @@ model Notice {
   title       String
   content     String
   category    String    @default("general")
+  // Phase 8: targeted notifications — which units should see this notice
+  targetType  String    @default("ALL_UNITS") // ALL_UNITS | SPECIFIC_UNITS
+  targetUnitIds Json?    // Array of unit IDs when targetType = SPECIFIC_UNITS
   publishedAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -480,6 +518,26 @@ model NoticeReadReceipt {
   @@unique([noticeId, userId])
 }
 
+enum StaffRole {
+  GUARD
+  CLEANER
+  MAINTENANCE
+  OTHER
+}
+
+enum SOSAlertStatus {
+  ACTIVE
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum SOSAlertCategory {
+  MEDICAL
+  FIRE
+  SECURITY
+  OTHER
+}
+
 enum ParcelStatus {
   ARRIVED
   COLLECTED
@@ -525,6 +583,63 @@ model InvoiceReminder {
   @@unique([invoiceId, dueDate])
   @@index([societyId])
   @@index([invoiceId])
+}
+
+model Staff {
+  id          String    @id @default(uuid())
+  societyId   String
+  society     Society   @relation(fields: [societyId], references: [id])
+  name        String
+  role        StaffRole
+  email       String?
+  phone       String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@index([societyId])
+  @@index([societyId, isActive])
+}
+
+model SOSAlert {
+  id              String          @id @default(uuid())
+  societyId       String
+  society         Society         @relation(fields: [societyId], references: [id])
+  unitId          String
+  unit            Unit            @relation(fields: [unitId], references: [id])
+  residentId      String
+  resident        User            @relation("SOSAlertTriggeredBy", fields: [residentId], references: [id])
+  category        SOSAlertCategory
+  status          SOSAlertStatus  @default(ACTIVE)
+  notes           String?
+  resolvedByUserId String?
+  resolvedBy      User?           @relation("SOSAlertResolvedBy", fields: [resolvedByUserId], references: [id])
+  resolvedAt      DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([societyId, status])
+  @@index([societyId, createdAt])
+  @@index([unitId])
+}
+
+// ── Password Reset (Phase 1 auth hardening) ────────────────────────────────
+// Single-use, time-limited reset tokens. Only the SHA-256 hash of the raw
+// token is stored — the raw token travels in the email link and is never
+// persisted, so a DB leak cannot be replayed. `usedAt` enforces single-use
+// atomically with the password update; `expiresAt` enforces the TTL.
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  tokenHash String   @unique // sha256(rawToken) hex — never the raw token
+  expiresAt DateTime
+  usedAt    DateTime? // null = unused; set inside the reset transaction
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model AuditLog {

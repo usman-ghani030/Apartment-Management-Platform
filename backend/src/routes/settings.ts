@@ -7,6 +7,7 @@ import { requireAuth, loadMembership } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { logAudit } from '../lib/audit';
 import { sendDueReminders } from '../lib/due-reminders';
+import { generateRecurringInvoices } from '../lib/recurring-billing';
 
 const router = Router();
 
@@ -14,22 +15,24 @@ const router = Router();
 // Per-society settings. Only dueReminderDays exists today (Phase 7 slice 2);
 // add future settings here as new optional fields.
 const UpdateSettingsSchema = z.object({
-  dueReminderDays: z.number().int().min(1).max(30, 'Reminder window must be between 1 and 30 days'),
+  dueReminderDays: z.number().int().min(1).max(30, 'Reminder window must be between 1 and 30 days').optional(),
+  billingDayOfMonth: z.number().int().min(1).max(28, 'Billing day must be between 1 and 28').nullable().optional(),
 });
 
 type SocietySettings = {
   dueReminderDays: number;
+  billingDayOfMonth: number | null;
 };
 
 async function getSocietySettings(societyId: string): Promise<SocietySettings> {
   const society = await prisma.society.findUnique({
     where: { id: societyId },
-    select: { dueReminderDays: true },
+    select: { dueReminderDays: true, billingDayOfMonth: true },
   });
   if (!society) {
     throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Society not found');
   }
-  return { dueReminderDays: society.dueReminderDays };
+  return { dueReminderDays: society.dueReminderDays, billingDayOfMonth: society.billingDayOfMonth };
 }
 
 // ── GET /api/v1/settings ───────────────────────────────────────────────────
@@ -66,10 +69,14 @@ router.patch(
       const societyId = req.membership!.societyId;
 
       const before = await getSocietySettings(societyId);
+      const updateData: any = {};
+      if (input.dueReminderDays !== undefined) updateData.dueReminderDays = input.dueReminderDays;
+      if (input.billingDayOfMonth !== undefined) updateData.billingDayOfMonth = input.billingDayOfMonth;
+
       const society = await prisma.society.update({
         where: { id: societyId },
-        data: { dueReminderDays: input.dueReminderDays },
-        select: { dueReminderDays: true },
+        data: updateData,
+        select: { dueReminderDays: true, billingDayOfMonth: true },
       });
 
       await logAudit({
@@ -79,10 +86,10 @@ router.patch(
         entityType: 'society',
         entityId: societyId,
         before: before,
-        after: { dueReminderDays: society.dueReminderDays },
+        after: { dueReminderDays: society.dueReminderDays, billingDayOfMonth: society.billingDayOfMonth },
       });
 
-      sendSuccess(res, { dueReminderDays: society.dueReminderDays });
+      sendSuccess(res, { dueReminderDays: society.dueReminderDays, billingDayOfMonth: society.billingDayOfMonth });
     } catch (err) {
       next(err);
     }
@@ -110,6 +117,34 @@ router.post(
         entityType: 'society',
         entityId: societyId,
         after: { reminded: result.reminded },
+      });
+
+      sendSuccess(res, result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ── POST /api/v1/settings/run-billing ──────────────────────────────────────
+// Admin-only manual trigger for recurring billing generation.
+router.post(
+  '/run-billing',
+  requireAuth,
+  loadMembership,
+  requireRole('update', 'society'),
+  async (req, res, next) => {
+    try {
+      const societyId = req.membership!.societyId;
+      const result = await generateRecurringInvoices(new Date(), societyId);
+
+      await logAudit({
+        societyId,
+        actorUserId: req.user!.id,
+        action: 'RECURRING_BILLING_MANUALLY_RUN',
+        entityType: 'society',
+        entityId: societyId,
+        after: { created: result.created, skipped: result.skipped, errors: result.errors.length },
       });
 
       sendSuccess(res, result);

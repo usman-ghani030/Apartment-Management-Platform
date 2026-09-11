@@ -435,14 +435,9 @@ export default function Home() {
         {/* Gradient hairline accent */}
         <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-accent-700 via-accent-400 to-accent-700" />
 
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="flex items-center gap-2.5 group flex-shrink-0">
-            <div className="bg-gradient-to-br from-accent-500 to-accent-800 p-2 rounded-xl text-white shadow-sm ring-1 ring-accent-700/20 group-hover:scale-105 group-hover:shadow-md transition-all">
-              <Building2 className="w-5 h-5" />
-            </div>
-            <span className="text-title-sm font-display text-gray-900">
-              Omni<span className="text-accent-600">Home</span>
-            </span>
+            <img src="/logo3.png" alt="OmniHome" className="h-[110px] w-auto object-contain group-hover:scale-105  transition-all" />
           </button>
 
           {/* Desktop nav */}
@@ -1200,9 +1195,7 @@ export default function Home() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-10 mb-12">
             <div className="col-span-2 md:col-span-1">
               <div className="flex items-center gap-2.5 mb-4">
-                <div className="bg-gradient-to-br from-accent-500 to-accent-800 p-2 rounded-xl text-white shadow-sm">
-                  <Building2 className="w-4 h-4" />
-                </div>
+                <img src="/logo3.png" alt="OmniHome" className="h-10 w-auto object-contain" />
                 <span className="text-body font-bold font-display text-gray-900">
                   Omni<span className="text-accent-600">Home</span>
                 </span>

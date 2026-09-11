@@ -1,8 +1,11 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Bell, LogOut, Home, Wrench, CreditCard } from 'lucide-react';
+import { useRouter, usePathname } from 'next/navigation';
+import {
+  LayoutDashboard, FileText, BarChart3, Folder, Wrench, CalendarRange,
+  QrCode, Package, CreditCard, Bell, LogOut, Menu, X, Home,
+} from 'lucide-react';
 import { auth, ApiError, apiGet } from '@/lib/api';
 import type { AuthResponse } from '@apartment/shared';
 
@@ -20,12 +23,146 @@ export function useResidentShell() {
   return useContext(ResidentShellContext);
 }
 
+// ── Sidebar nav config ──────────────────────────────────────────────────
+interface NavItem {
+  icon: React.ElementType;
+  label: string;
+  href: string;
+}
+
+const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
+  {
+    label: 'Overview',
+    items: [
+      { icon: LayoutDashboard, label: 'Home', href: '/dashboard/resident' },
+    ],
+  },
+  {
+    label: 'Community',
+    items: [
+      { icon: FileText, label: 'Notices', href: '/dashboard/resident/notices' },
+      { icon: BarChart3, label: 'Polls', href: '/dashboard/resident/polls' },
+      { icon: Folder, label: 'Documents', href: '/dashboard/resident/documents' },
+    ],
+  },
+  {
+    label: 'Services',
+    items: [
+      { icon: Wrench, label: 'Tickets', href: '/dashboard/resident/tickets' },
+      { icon: CalendarRange, label: 'Amenities', href: '/dashboard/resident/amenities' },
+      { icon: QrCode, label: 'Visitors', href: '/dashboard/resident/visitors' },
+      { icon: Package, label: 'Packages', href: '/dashboard/resident/parcels' },
+    ],
+  },
+  {
+    label: 'Billing',
+    items: [
+      { icon: CreditCard, label: 'Payments', href: '/dashboard/resident/invoices' },
+    ],
+  },
+];
+
+// ── Sidebar Component ───────────────────────────────────────────────────
+function ResidentSidebar({
+  open,
+  onClose,
+  unreadNotices,
+}: {
+  open: boolean;
+  onClose: () => void;
+  unreadNotices: number;
+}) {
+  const router = useRouter();
+  const currentPath = usePathname();
+
+  const isItemActive = (item: NavItem) => {
+    if (item.href === '/dashboard/resident') return currentPath === item.href;
+    return currentPath === item.href || currentPath.startsWith(item.href + '/');
+  };
+
+  const handleNav = (href: string) => {
+    router.push(href);
+    onClose();
+  };
+
+  return (
+    <>
+      {/* Mobile backdrop */}
+      {open && (
+        <div className="fixed inset-0 z-[60] bg-black/40 lg:hidden" onClick={onClose} />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={`fixed top-0 left-0 z-[70] h-full w-64 bg-white border-r border-gray-200 flex flex-col transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+          open ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {/* Logo */}
+        <div className="h-14 flex items-center gap-3 px-5 border-b border-gray-200 flex-shrink-0">
+          <img src="/logo3.png" alt="OmniHome" className="h-10 w-auto object-contain flex-shrink-0" />
+          <span className="text-body-sm font-semibold text-gray-900">OmniHome</span>
+          <button onClick={onClose} className="ml-auto p-1 rounded-lg hover:bg-gray-50 lg:hidden">
+            <X className="w-4 h-4 text-gray-700" />
+          </button>
+        </div>
+
+        {/* Nav groups */}
+        <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-5">
+          {NAV_SECTIONS.map((section) => (
+            <div key={section.label}>
+              <span className="text-caption-xs font-semibold uppercase tracking-widest text-gray-400 block px-2 mb-2">
+                {section.label}
+              </span>
+              <div className="space-y-0.5">
+                {section.items.map((item) => {
+                  const badge = item.label === 'Notices' && unreadNotices > 0 ? `${unreadNotices}` : undefined;
+                  const isActive = isItemActive(item);
+                  return (
+                    <button
+                      key={item.label}
+                      onClick={() => handleNav(item.href)}
+                      className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-body-sm font-medium transition-all text-left focus-visible:ring-2 focus-visible:ring-accent-500/50 focus-visible:ring-offset-2 ${
+                        isActive
+                          ? 'bg-accent-50 text-accent-600'
+                          : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                      }`}
+                    >
+                      <item.icon className={`w-4.5 h-4.5 flex-shrink-0 ${isActive ? 'text-accent-600' : 'text-gray-700'}`} />
+                      <span className="flex-1 truncate">{item.label}</span>
+                      {badge && (
+                        <span className={`text-caption-xs font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                          isActive
+                            ? 'bg-accent-100 text-accent-600'
+                            : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        {/* Sidebar footer */}
+        <div className="border-t border-gray-200 px-3 py-3 flex-shrink-0">
+          <span className="text-caption-xs text-gray-400 block px-2">OmniHome v1.0</span>
+        </div>
+      </aside>
+    </>
+  );
+}
+
 // ── Resident Shell (persistent layout for all resident pages) ─────────
 export function ResidentShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<AuthResponse | null>(null);
   const [unreadNotices, setUnreadNotices] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,13 +171,13 @@ export function ResidentShell({ children }: { children: React.ReactNode }) {
         const userData = await auth.me();
         const isResident = userData.memberships.some((m) => m.role === 'RESIDENT');
         if (!isResident) {
-          router.push('/dashboard/admin');
+          router.push('/login');
           return;
         }
         if (cancelled) return;
         setUser(userData);
 
-        // Unread-notice count for the header bell
+        // Unread-notice count for the header bell + sidebar badge
         try {
           const notices = await apiGet<any[]>('/api/v1/notices').catch(() => []);
           if (!cancelled) {
@@ -54,7 +191,8 @@ export function ResidentShell({ children }: { children: React.ReactNode }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleLogout = async () => {
     await auth.logout();
@@ -77,36 +215,54 @@ export function ResidentShell({ children }: { children: React.ReactNode }) {
   return (
     <ResidentShellContext.Provider value={{ user, unreadNotices }}>
       <div className="min-h-screen bg-white text-gray-900">
+        <ResidentSidebar
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          unreadNotices={unreadNotices}
+        />
+
         {/* ── Header ──────────────────────────────────────────────────── */}
-        <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200">
-          <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-            <button onClick={() => router.push('/')} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-              <div className="w-8 h-8 rounded-lg bg-accent-600 flex items-center justify-center shadow-sm">
-                <Home className="w-4 h-4 text-white" />
-              </div>
-              <div className="text-left">
-                <p className="text-body-sm font-semibold text-gray-900">{society?.societyName || 'My Community'}</p>
-                <p className="text-caption-xs text-gray-700">Resident</p>
-              </div>
-            </button>
+        <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200 lg:ml-64">
+          <div className="h-20 flex items-center justify-between px-4">
+            <div className="flex items-center gap-3">
+              {/* Hamburger for mobile */}
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="p-2 rounded-lg hover:bg-gray-50 transition-colors lg:hidden"
+              >
+                <Menu className="w-4.5 h-4.5 text-gray-700" />
+              </button>
+              <button onClick={() => router.push('/')} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+                <img src="/logo3.png" alt="OmniHome" className="h-16 w-auto object-contain" />
+                <div className="text-left">
+                  <p className="text-body-sm font-semibold text-gray-900">{society?.societyName || 'My Community'}</p>
+                  <p className="text-caption-xs text-gray-700">Resident</p>
+                </div>
+              </button>
+            </div>
             <div className="flex items-center gap-1.5">
-              <button className="relative p-2 rounded-lg transition-colors text-gray-700 hover:text-gray-900 hover:bg-gray-50">
+              <span className="hidden sm:block text-caption text-gray-700">{user?.user.name}</span>
+              <button onClick={() => router.push('/dashboard/resident/notices')} className="relative p-2 rounded-lg transition-colors text-gray-700 hover:text-gray-900 hover:bg-gray-50">
                 <Bell className="w-4.5 h-4.5" />
                 {unreadNotices > 0 && (
                   <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-accent-500 ring-2 ring-white" />
                 )}
               </button>
-              <button onClick={handleLogout} className="p-2 rounded-lg transition-colors text-gray-700 hover:text-status-danger hover:bg-gray-50">
-                <LogOut className="w-4.5 h-4.5" />
+              <button onClick={handleLogout} className="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-gray-700 hover:text-status-danger hover:bg-gray-50">
+                <LogOut className="w-4 h-4" />
+                <span className="text-body-sm font-medium hidden sm:inline">Logout</span>
               </button>
             </div>
           </div>
         </header>
 
-        <main className="max-w-6xl mx-auto px-4 py-6 pb-24">{children}</main>
+        {/* Main Content */}
+        <main className="lg:ml-64">
+          <div className="max-w-6xl mx-auto px-4 py-6 pb-24">{children}</div>
+        </main>
 
         {/* ── Mobile bottom nav ───────────────────────────────────────── */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200 border-t border-gray-200 px-2 py-1.5 safe-area-bottom">
+        <nav className={`md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/80 backdrop-blur-md border-t border-gray-200 px-2 py-1.5 safe-area-bottom transition-opacity ${sidebarOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
           <div className="flex items-center justify-around">
             {[
               { icon: Home, label: 'Home', href: '/dashboard/resident' },

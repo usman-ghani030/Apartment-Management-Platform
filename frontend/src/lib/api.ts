@@ -1,6 +1,6 @@
 import type { ApiResponse, AuthResponse, SignupInput, LoginInput } from '@apartment/shared';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 // ── Token storage (cross-origin safe, no cookies needed) ────────────────────
 let authToken: string | null = null;
@@ -228,6 +228,49 @@ export const auth = {
     }
     return result as AuthResponse;
   },
+
+  // Google Sign-In — `linked` is true when the Google account was just linked to
+  // an existing password-based account (frontend shows a confirmation message).
+  googleSignIn: async (idToken: string) => {
+    const result = await request<AuthResponse & { accessToken?: string; refreshToken?: string; linked?: boolean }>('/api/v1/auth/google', {
+      method: 'POST',
+      body: { idToken, mode: 'signin' },
+    });
+    if (result.accessToken) {
+      setAuthToken(result.accessToken);
+    }
+    if (result.refreshToken) {
+      setRefreshToken(result.refreshToken);
+    }
+    return result as AuthResponse & { linked?: boolean };
+  },
+
+  // Google Sign-Up — creates a new Society + first admin, same as password signup
+  googleSignUp: async (idToken: string, societyName: string, societySlug: string) => {
+    const result = await request<AuthResponse & { accessToken?: string; refreshToken?: string }>('/api/v1/auth/google', {
+      method: 'POST',
+      body: { idToken, mode: 'signup', societyName, societySlug },
+    });
+    if (result.accessToken) {
+      setAuthToken(result.accessToken);
+    }
+    if (result.refreshToken) {
+      setRefreshToken(result.refreshToken);
+    }
+    return result as AuthResponse;
+  },
+
+  forgotPassword: (email: string) =>
+    request<{ message: string; googleOnly?: boolean }>('/api/v1/auth/forgot-password', {
+      method: 'POST',
+      body: { email },
+    }),
+
+  resetPassword: (token: string, password: string) =>
+    request<{ message: string }>('/api/v1/auth/reset-password', {
+      method: 'POST',
+      body: { token, password },
+    }),
 
   logout: async () => {
     setAuthToken(null);

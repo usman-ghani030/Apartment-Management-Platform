@@ -2,8 +2,9 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Building2, LogIn, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { LogIn, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { auth, ApiError } from '@/lib/api';
+import GoogleSignInButton from '@/components/auth/google-sign-in-button';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,6 +13,39 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [googleLinked, setGoogleLinked] = useState(false);
+
+  const redirectToDashboard = (data: { memberships: { role?: string }[] }) => {
+    const role = data.memberships[0]?.role;
+    const dest =
+      role === 'COMMITTEE_ADMIN' || role === 'SUPER_ADMIN' ? '/dashboard/admin'
+      : role === 'SECURITY_GUARD' ? '/dashboard/guard'
+      : '/dashboard/resident';
+    router.push(dest);
+  };
+
+  // Google Sign-In: forward the verified ID token to the backend, which links
+  // it to an existing account (or rejects the sign-in if no account exists).
+  const handleGoogleToken = async (idToken: string) => {
+    setError('');
+    setGoogleLoading(true);
+    try {
+      const data = await auth.googleSignIn(idToken);
+      if (data.linked) {
+        setGoogleLinked(true);
+      }
+      redirectToDashboard(data);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError('An unexpected error occurred. Please try again.');
+      }
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,8 +54,7 @@ export default function LoginPage() {
 
     try {
       const data = await auth.login({ email, password });
-      const isAdmin = data.memberships.some((m) => m.role === 'COMMITTEE_ADMIN' || m.role === 'SUPER_ADMIN');
-      router.push(isAdmin ? '/dashboard/admin' : '/dashboard/resident');
+      redirectToDashboard(data);
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -43,9 +76,7 @@ export default function LoginPage() {
 
       {/* Logo — matches home page header */}
       <a href="/" className="absolute top-8 left-8 flex items-center gap-2.5 group z-10">
-        <div className="bg-gradient-to-br from-accent-500 to-accent-800 p-2 rounded-xl text-white shadow-sm ring-1 ring-accent-700/20 group-hover:scale-105 group-hover:shadow-md transition-all">
-          <Building2 className="w-5 h-5" />
-        </div>
+        <img src="/logo3.png" alt="OmniHome" className="h-12 w-auto object-contain group-hover:scale-105 group-hover:shadow-md transition-all" />
         <span className="text-title-sm font-display text-gray-900">
           Omni<span className="text-accent-600">Home</span>
         </span>
@@ -67,6 +98,27 @@ export default function LoginPage() {
               {error}
             </div>
           )}
+
+          {googleLinked && (
+            <div className="bg-green-50 border border-green-200 text-green-700 text-body-sm rounded-lg px-4 py-3 mb-6">
+              Your Google account has been linked to your existing OmniHome account.
+            </div>
+          )}
+
+          {/* Google Sign-In — same session handling as password login */}
+          <div className="mb-6">
+            <div className="flex justify-center">
+              <GoogleSignInButton
+                onToken={handleGoogleToken}
+                disabled={loading || googleLoading}
+              />
+            </div>
+            <div className="my-5 flex items-center gap-3">
+              <div className="h-px flex-1 bg-gray-200" />
+              <span className="text-caption-xs font-medium text-gray-700">or sign in with email</span>
+              <div className="h-px flex-1 bg-gray-200" />
+            </div>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
@@ -110,11 +162,19 @@ export default function LoginPage() {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              <div className="flex justify-end mt-1.5">
+                <a
+                  href="/forgot-password"
+                  className="text-caption-xs font-medium text-accent-600 hover:text-accent-700 transition-colors"
+                >
+                  Forgot password?
+                </a>
+              </div>
             </div>
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || googleLoading}
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-body-sm font-semibold text-white bg-accent-600 hover:bg-accent-700 transition-all shadow-sm disabled:opacity-60"
             >
               {loading ? (

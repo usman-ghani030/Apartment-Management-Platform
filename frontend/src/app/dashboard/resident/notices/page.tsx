@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, FileText, Eye, CheckCircle, Clock, ChevronRight } from 'lucide-react';
+import { ArrowLeft, FileText, Eye, CheckCircle, Clock, ChevronRight, Search } from 'lucide-react';
 import { auth, ApiError, apiGet } from '@/lib/api';
 import type { NoticeResponse } from '@apartment/shared';
 
@@ -11,6 +11,7 @@ export default function ResidentNoticesPage() {
   const [notices, setNotices] = useState<NoticeResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<NoticeResponse | null>(null);
+  const [search, setSearch] = useState('');
 
   const fetchNotices = useCallback(async () => {
     try {
@@ -96,6 +97,20 @@ export default function ResidentNoticesPage() {
           </div>
         </div>
 
+        {/* Search */}
+        {notices.length > 0 && (
+          <div className="relative mb-6">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-700" />
+            <input
+              type="text"
+              placeholder="Search by title, content, or category..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-10 pr-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50 focus:ring-1 focus:ring-accent-500/20 transition-all"
+            />
+          </div>
+        )}
+
         {/* Notice List */}
         {notices.length === 0 ? (
           <div className="text-center py-20">
@@ -103,9 +118,26 @@ export default function ResidentNoticesPage() {
             <p className="text-gray-700">No notices yet</p>
             <p className="text-gray-700 text-sm mt-1">Your community hasn't posted any announcements</p>
           </div>
-        ) : (
+        ) : (() => {
+          const q = search.toLowerCase();
+          const filtered = notices.filter((n) =>
+            !search ||
+            n.title.toLowerCase().includes(q) ||
+            n.content.toLowerCase().includes(q) ||
+            n.category.toLowerCase().includes(q)
+          );
+          if (filtered.length === 0) {
+            return (
+              <div className="text-center py-12">
+                <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-500">No notices match "{search}"</p>
+                <p className="text-gray-400 text-sm mt-1">Try a different search term</p>
+              </div>
+            );
+          }
+          return (
           <div className="space-y-3">
-            {notices.map((notice) => (
+            {filtered.map((notice) => (
               <button
                 key={notice.id}
                 onClick={() => viewNotice(notice)}
@@ -133,7 +165,8 @@ export default function ResidentNoticesPage() {
               </button>
             ))}
           </div>
-        )}
+          );
+        })()}
       </main>
     </div>
   );

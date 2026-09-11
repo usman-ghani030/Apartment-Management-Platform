@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, ChevronRight, Wrench, Image as ImageIcon, X } from 'lucide-react';
+import { ArrowLeft, Plus, ChevronRight, Wrench, Image as ImageIcon, X, Search } from 'lucide-react';
 import { ApiError, apiGet, apiPost, apiUpload } from '@/lib/api';
 import type { TicketResponse } from '@apartment/shared';
 
@@ -27,6 +27,7 @@ export default function ResidentTicketsPage() {
   const [selected, setSelected] = useState<TicketResponse | null>(null);
   const [comment, setComment] = useState('');
   const [photos, setPhotos] = useState<File[]>([]);
+  const [search, setSearch] = useState('');
 
   const fetchTickets = useCallback(async () => {
     try {
@@ -144,7 +145,7 @@ export default function ResidentTicketsPage() {
                 )}
               </div>
               <form onSubmit={addComment} className="flex gap-2">
-                <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add a comment..." className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50" />
+                <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add a comment..." maxLength={2000} className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50" />
                 <button type="submit" className="bg-accent-600 hover:bg-accent-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-all">Send</button>
               </form>
             </div>
@@ -172,13 +173,13 @@ export default function ResidentTicketsPage() {
             <h2 className="text-lg font-semibold mb-4">Raise a Ticket</h2>
             <form onSubmit={handleCreate} className="space-y-4">
               <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Title</label>
-                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What's the issue?" required className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50 focus:ring-1 focus:ring-accent-500/20 transition-all" /></div>
+                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What's the issue?" required maxLength={200} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50 focus:ring-1 focus:ring-accent-500/20 transition-all" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Category</label>
                 <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-accent-500/50">
                   <option value="plumbing">Plumbing</option><option value="electrical">Electrical</option><option value="hvac">HVAC / AC</option><option value="cleaning">Cleaning</option><option value="pest">Pest Control</option><option value="security">Security</option><option value="other">Other</option>
                 </select></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
-                <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe the issue in detail..." required rows={4} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50 focus:ring-1 focus:ring-accent-500/20 transition-all resize-y" /></div>
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe the issue in detail..." required maxLength={5000} rows={4} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50 focus:ring-1 focus:ring-accent-500/20 transition-all resize-y" /></div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Photos (optional)</label>
                 <div className="flex items-center gap-2">
@@ -213,11 +214,43 @@ export default function ResidentTicketsPage() {
           </div>
         )}
 
+        {/* Search */}
+        {tickets.length > 0 && (
+          <div className="relative mb-6">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-700" />
+            <input
+              type="text"
+              placeholder="Search by title, category, or status..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-10 pr-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50 focus:ring-1 focus:ring-accent-500/20 transition-all"
+            />
+          </div>
+        )}
+
         {tickets.length === 0 ? (
           <div className="text-center py-20"><Wrench className="w-12 h-12 text-gray-700 mx-auto mb-4" /><p className="text-gray-700">No tickets yet</p><p className="text-gray-700 text-sm mt-1">Raise a maintenance request to get help</p></div>
-        ) : (
+        ) : (() => {
+          const q = search.toLowerCase();
+          const filtered = tickets.filter((t) =>
+            !search ||
+            t.title.toLowerCase().includes(q) ||
+            t.description.toLowerCase().includes(q) ||
+            t.category.toLowerCase().includes(q) ||
+            t.status.toLowerCase().replace('_', ' ').includes(q)
+          );
+          if (filtered.length === 0) {
+            return (
+              <div className="text-center py-12">
+                <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-500">No tickets match "{search}"</p>
+                <p className="text-gray-400 text-sm mt-1">Try a different search term</p>
+              </div>
+            );
+          }
+          return (
           <div className="space-y-3">
-            {tickets.map((t) => (
+            {filtered.map((t) => (
               <button key={t.id} onClick={() => viewTicket(t.id)} className="w-full text-left bg-white border border-gray-200 rounded-xl shadow-sm p-4 border border-gray-200 hover:border-accent-500/30 transition-all group">
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
@@ -234,7 +267,8 @@ export default function ResidentTicketsPage() {
               </button>
             ))}
           </div>
-        )}
+          );
+        })()}
       </main>
     </div>
   );

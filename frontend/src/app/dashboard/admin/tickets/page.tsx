@@ -264,7 +264,7 @@ export default function AdminTicketsPage() {
                 {(!selected.comments || selected.comments.length === 0) && <p className="text-xs text-gray-700">No comments yet</p>}
               </div>
               <form onSubmit={addComment} className="flex gap-2">
-                <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add an update..." className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50" />
+                <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add an update..." maxLength={2000} className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50" />
                 <button type="submit" className="bg-accent-600 hover:bg-accent-600 text-white rounded-lg px-4 py-2 text-sm font-medium transition-all"><Send className="w-4 h-4" /></button>
               </form>
             </div>

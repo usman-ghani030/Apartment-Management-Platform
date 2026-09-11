@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Building2, UserPlus, Mail, Lock, User, Globe, ArrowRight } from 'lucide-react';
 import { auth, ApiError } from '@/lib/api';
+import GoogleSignInButton from '@/components/auth/google-sign-in-button';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -14,6 +15,7 @@ export default function SignupPage() {
   const [societySlug, setSocietySlug] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const generateSlug = (name: string) => {
     return name
@@ -48,6 +50,34 @@ export default function SignupPage() {
     }
   };
 
+  // Google Sign-Up: tenant onboarding like the password form — the user must
+  // enter a society name + URL first, then Google only supplies their identity.
+  const handleGoogleToken = async (idToken: string) => {
+    setError('');
+    if (!societyName.trim()) {
+      setError('Enter your society name to continue with Google.');
+      return;
+    }
+    if (!/^[a-z0-9-]{2,50}$/.test(societySlug)) {
+      setError('Enter a valid society URL (lowercase letters, numbers, hyphens) to continue with Google.');
+      return;
+    }
+
+    setGoogleLoading(true);
+    try {
+      await auth.googleSignUp(idToken, societyName.trim(), societySlug);
+      router.push('/dashboard/admin');
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError('An unexpected error occurred. Please try again.');
+      }
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center px-6 bg-white">
       {/* Background effects */}
@@ -58,9 +88,7 @@ export default function SignupPage() {
 
       {/* Logo — matches home page header */}
       <a href="/" className="absolute top-8 left-8 flex items-center gap-2.5 group z-10">
-        <div className="bg-gradient-to-br from-accent-500 to-accent-800 p-2 rounded-xl text-white shadow-sm ring-1 ring-accent-700/20 group-hover:scale-105 group-hover:shadow-md transition-all">
-          <Building2 className="w-5 h-5" />
-        </div>
+        <img src="/logo3.png" alt="OmniHome" className="h-12 w-auto object-contain group-hover:scale-105 group-hover:shadow-md transition-all" />
         <span className="text-title-sm font-display text-gray-900">
           Omni<span className="text-accent-600">Home</span>
         </span>
@@ -82,6 +110,21 @@ export default function SignupPage() {
               {error}
             </div>
           )}
+
+          {/* Google Sign-Up — creates a new Society + first admin, same as the form below */}
+          <div className="mb-6">
+            <div className="flex justify-center">
+              <GoogleSignInButton
+                onToken={handleGoogleToken}
+                disabled={loading || googleLoading}
+              />
+            </div>
+            <div className="my-5 flex items-center gap-3">
+              <div className="h-px flex-1 bg-gray-200" />
+              <span className="text-caption-xs font-medium text-gray-700">or create with email</span>
+              <div className="h-px flex-1 bg-gray-200" />
+            </div>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -184,7 +227,7 @@ export default function SignupPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || googleLoading}
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-body-sm font-semibold text-white bg-accent-600 hover:bg-accent-700 transition-all shadow-sm disabled:opacity-60 mt-2"
             >
               {loading ? (

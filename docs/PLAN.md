@@ -249,7 +249,17 @@ Deliberately sequenced ahead of the AI layer since these solve daily friction wi
 
 **Explicitly deferred to the end of this phase, not skipped**: full Safepay payment gateway completion and email verification on signup. Both are functionally important but were intentionally pushed to the very end of Phase 7's work due to the testing overhead they add (webhook testing, email delivery testing) — build and validate the four features above first, then close out Safepay integration and email verification as the last two slices of this phase before moving to Phase 8.
 
-### Phase 8 — AI Layer
+### Phase 8 — Safety, Staff & Automated Billing
+
+Added based on competitive research (Nizam). Sequenced before the AI layer for the same reason as Phase 7: solves real daily/safety needs with infrastructure already in place, rather than requiring new architecture.
+
+- [ ] **SOS Emergency Alerts**: resident triggers a one-tap alert (category: Medical, Fire, Security, Other) from the resident app. Instantly notifies all active Committee Admins for that society (and Security Guards, if a guard Membership exists) via the existing notification pattern, shown as a high-priority item on the admin dashboard's "Needs your attention" panel (Phase 7). Logs unit, resident, category, timestamp, and resolution status; full audit trail per Section 4.4.
+- [ ] **Transfer Clearance**: workflow triggered when a Unit's occupancy changes (move-out/ownership transfer). Checks all invoices for that unit are settled (paid, not just pending) before an admin can mark the transfer/clearance complete. Ties into the Unit/Primary Contact model from the unit-details work — updating a unit's primary contact or deactivating a Membership should surface this check, not bypass it.
+- [ ] **Staff Management**: new `Staff` entity (tenant-scoped: societyId, name, role — Guard/Cleaner/Maintenance/Other, contact info, active/inactive status). Admin CRUD for staff records. Optional read-only "who's on duty" view visible to residents. Distinct from `Vendor` (external, per-job) — Staff represents ongoing internal personnel.
+- [ ] **Targeted Notifications**: extend the existing Notice/notification system (Phase 1) so admins can target a notice to specific unit(s), a category/tag, or the whole complex (current default) — not a new system, a targeting capability added to what exists.
+- [ ] **Automated Recurring Billing Schedule**: admin configures a billing cycle (day-of-month) per society. A scheduled BullMQ job (Redis-backed, same pattern as Phase 7's dues reminder job) auto-generates invoices for all active units on that date each month and sends a payment notification at generation time. **This is distinct from Phase 7's dues reminder** — that job reminds residents before an *existing* invoice's due date; this one actually creates the recurring invoice on schedule and notifies at creation. Both jobs coexist and serve different points in the billing cycle.
+
+### Phase 9 — AI Layer
 
 - [ ] Stand up `ai-service` (Python + FastAPI)
 - [ ] pgvector enabled on relevant tables (e.g. tickets, documents) for semantic search
@@ -285,7 +295,7 @@ Deliberately sequenced ahead of the AI layer since these solve daily friction wi
 
 - [x] **Storage: Cloudinary**, decided for MVP (easier setup, built-in image transforms for ticket photos, generous free tier). See `docs/adr/002-storage-provider.md`. **Requirement**: implement behind a `backend/prisma`-adjacent `StorageProvider` interface (`upload`, `getUrl`, `delete`) in Phase 0/1 — no feature calls the Cloudinary SDK directly — so migrating to S3 later per the AWS deployment plan is a contained swap, not a rewrite.
 - [x] **Auth: custom JWT (access + refresh) in Express**, decided for MVP. See `docs/adr/001-auth-mechanism.md`. Argon2 for password hashing, refresh tokens stored in Redis (revocable — required for auto-revoking moved-out residents), access token payload carries only `userId` (never role/societyId, since those must reflect live `Membership` state, not a stale token).
-- [ ] Notification delivery for Phase 1: email provider choice (Resend/Postmark/SES) for the notice/ticket-status notifications.
+- [x] **Notification delivery: Resend.** Chosen for password reset emails; use the same provider for all other email notifications (notices, ticket-status changes, dues reminders, vendor assignment emails) rather than introducing a second provider — one email-sending path for the whole app.
 
 ---
 
@@ -299,3 +309,5 @@ Deliberately sequenced ahead of the AI layer since these solve daily friction wi
 | 2026-07-19 | Simplified project structure: dropped Turborepo for plain npm workspaces (`frontend`, `backend`, `shared`) instead of `apps/`+`packages/` layout |
 | 2026-07-19 | Inserted new Phase 7 — Engagement & Accountability (parcel tracking, dues reminders, vendor ratings, admin analytics); AI Layer renumbered to Phase 8; payment gateway completion and email verification explicitly deferred to end of Phase 7 |
 | 2026-07-19 | Switched payment provider from Stripe to Safepay; added ADR 003 and PaymentProvider abstraction requirement |
+| 2026-07-19 | Inserted new Phase 8 — Safety, Staff & Automated Billing (SOS alerts, transfer clearance, staff management, targeted notifications, recurring billing schedule), based on Nizam competitive research; AI Layer renumbered to Phase 9 |
+| 2026-09-11 | Password reset added (forgot/reset flows, Resend email, hashed single-use tokens, Google-only account handling, tokenVersion-based session invalidation, per-email/IP rate limiting); Resend confirmed as the email provider (was an open question in §15) |
