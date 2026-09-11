@@ -305,6 +305,34 @@ describe('POST /api/v1/auth/google — signup mode (tenant onboarding)', () => {
   });
 });
 
+describe('GET /api/v1/auth/google/config — runtime client ID fallback', () => {
+  const original = process.env.GOOGLE_CLIENT_ID;
+
+  afterAll(() => {
+    if (original === undefined) delete process.env.GOOGLE_CLIENT_ID;
+    else process.env.GOOGLE_CLIENT_ID = original;
+  });
+
+  it('exposes the configured client ID so the button renders even without a NEXT_PUBLIC_ build var', async () => {
+    process.env.GOOGLE_CLIENT_ID = 'test-client-id.apps.googleusercontent.com';
+
+    const res = await request(app).get('/api/v1/auth/google/config');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.clientId).toBe('test-client-id.apps.googleusercontent.com');
+    expect(res.body.error).toBeNull();
+  });
+
+  it('returns null when the backend has no GOOGLE_CLIENT_ID configured', async () => {
+    delete process.env.GOOGLE_CLIENT_ID;
+
+    const res = await request(app).get('/api/v1/auth/google/config');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.clientId).toBeNull();
+  });
+});
+
 describe('Google-only accounts cannot use password login', () => {
   it('rejects a password login for a user with no passwordHash (401)', async () => {
     (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(

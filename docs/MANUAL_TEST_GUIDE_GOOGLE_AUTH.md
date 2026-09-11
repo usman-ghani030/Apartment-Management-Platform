@@ -149,4 +149,24 @@ returns 500 without it). `GOOGLE_CLIENT_SECRET` is not used by the ID-token flow
 | Button shows, click fails with `Invalid or expired Google token` (401) | Step 4 — `GOOGLE_CLIENT_ID` missing/mismatched on Render |
 | Button shows, click gives "An unexpected error occurred" | `NEXT_PUBLIC_API_URL` wrong, or the backend is unreachable (check the browser Network tab) |
 
+### Safety net: runtime client-ID fallback (added 2026-09-12)
+
+The button no longer depends *solely* on the build-time variable. When
+`NEXT_PUBLIC_GOOGLE_CLIENT_ID` is absent from the built bundle, the component fetches the
+client ID at runtime from `GET /api/v1/auth/google/config`, which serves the backend's
+`GOOGLE_CLIENT_ID` (a public value — browsers send it to Google — so exposing it leaks
+nothing). The button therefore renders as long as the **backend** has `GOOGLE_CLIENT_ID`,
+even if the Vercel build env does not.
+
+Verify the backend side from anywhere:
+```bash
+curl https://your-api.onrender.com/api/v1/auth/google/config
+# {"data":{"clientId":"1234-....apps.googleusercontent.com"},"error":null}   ← good
+# {"data":{"clientId":null},"error":null}                                  ← set GOOGLE_CLIENT_ID on Render
+```
+
+This does **not** remove the need for step 3 (Authorized JavaScript origins): if the deployed
+origin isn't authorized, the container stays empty and the button now shows the visible
+"Google Sign-In failed to load" message after ~1.5s instead of failing invisibly.
+
 Also: apply the DB migration on the prod database once — `npx prisma migrate deploy`.

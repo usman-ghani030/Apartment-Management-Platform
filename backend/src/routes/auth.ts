@@ -193,6 +193,18 @@ router.post('/login', async (req, res, next) => {
   }
 });
 
+// ── GET /api/v1/auth/google/config ─────────────────────────────────────────
+// Public runtime config for the Google button. The OAuth *client ID* is public
+// by design (browsers send it to Google), so exposing it here leaks nothing.
+//
+// Why this exists: Next.js inlines NEXT_PUBLIC_* at BUILD time, so a frontend
+// host that didn't have NEXT_PUBLIC_GOOGLE_CLIENT_ID when it built (a common
+// Vercel miss) would hide the Google button with no visible clue. The button
+// falls back to this at runtime, so it works regardless of the build env.
+router.get('/google/config', (_req, res) => {
+  sendSuccess(res, { clientId: process.env.GOOGLE_CLIENT_ID || null });
+});
+
 // ── POST /api/v1/auth/google ───────────────────────────────────────────────
 // Google Sign-In (GSI): the frontend sends the Google ID token; we verify it
 // server-side (signature, audience, expiry) and never trust an unverified token.

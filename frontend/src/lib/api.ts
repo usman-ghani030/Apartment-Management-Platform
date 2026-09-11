@@ -272,6 +272,10 @@ export const auth = {
       body: { token, password },
     }),
 
+  // Public runtime config for the Google button. Used as a fallback when the
+  // build didn't have NEXT_PUBLIC_GOOGLE_CLIENT_ID (build-time-only inlining).
+  googleConfig: () => request<{ clientId: string | null }>('/api/v1/auth/google/config'),
+
   logout: async () => {
     setAuthToken(null);
     setRefreshToken(null);

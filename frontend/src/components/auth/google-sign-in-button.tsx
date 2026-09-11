@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { auth } from '@/lib/api';
 
 // Google Identity Services (GSI) global — loaded from accounts.google.com/gsi/client
 declare global {
@@ -39,13 +40,25 @@ interface GoogleSignInButtonProps {
 
 /**
  * "Sign in with Google" button powered by Google Identity Services.
- * Loads the GSI script once (shared across pages), renders the button into a
- * div, and forwards the verified ID token to `onToken`. The token is then sent
- * to the backend which verifies it server-side — the backend never trusts an
- * unverified token.
+ *
+ * The client ID comes from `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, which Next.js inlines
+ * at BUILD time — so a frontend host that didn't have the variable when it built
+ * (a very common Vercel setup mistake) would otherwise hide this button forever
+ * with no visible clue. As a safety net we fall back to the backend's
+ * `GOOGLE_CLIENT_ID` (through a public config endpoint) at runtime. OAuth client
+ * IDs are public by design — browsers send them to Google — so this leaks nothing.
+ *
+ * Loads the GSI script once (shared across pages), renders the button into a div,
+ * and forwards the verified ID token to `onToken`. The token is then sent to the
+ * backend which verifies it server-side — the backend never trusts an unverified
+ * token.
  */
 export default function GoogleSignInButton({ onToken, disabled }: GoogleSignInButtonProps) {
-  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const buildTimeClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const [clientId, setClientId] = useState<string | null>(buildTimeClientId ?? null);
+  // `resolved` = we know whether a client ID is available (so we can report the
+  // real reason instead of logging an error while still resolving).
+  const [resolved, setResolved] = useState(Boolean(buildTimeClientId));
   const buttonRef = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
 
@@ -53,17 +66,38 @@ export default function GoogleSignInButton({ onToken, disabled }: GoogleSignInBu
   const onTokenRef = useRef(onToken);
   onTokenRef.current = onToken;
 
+  // Resolve the client ID. The build-time value wins; otherwise ask the backend once.
+  useEffect(() => {
+    if (buildTimeClientId) return;
+    let cancelled = false;
+    auth
+      .googleConfig()
+      .then((cfg) => {
+        if (!cancelled) setClientId(cfg.clientId);
+      })
+      .catch(() => {
+        if (!cancelled) setClientId(null);
+      })
+      .finally(() => {
+        if (!cancelled) setResolved(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [buildTimeClientId]);
+
   useEffect(() => {
     if (!clientId) {
-      // NEXT_PUBLIC_* vars are inlined at BUILD time, so an undefined value means
-      // the build didn't have it — the button can't render at all. This is the
-      // most common cause of "the Google button is missing in production".
-      console.error(
-        '[GoogleSignIn] NEXT_PUBLIC_GOOGLE_CLIENT_ID is not set for this build, so the ' +
-          'Google button is hidden. Set it in the frontend host (e.g. Vercel → Project → ' +
-          'Settings → Environment Variables, for the Production environment), then REDEPLOY — ' +
-          'NEXT_PUBLIC_* values are baked in at build time and need a fresh build.'
-      );
+      if (resolved) {
+        console.error(
+          '[GoogleSignIn] No Google client ID available, so the button is hidden. Set ' +
+            'NEXT_PUBLIC_GOOGLE_CLIENT_ID on the frontend host (e.g. Vercel → Settings → ' +
+            'Environment Variables, for the Production environment) and REDEPLOY — ' +
+            'NEXT_PUBLIC_* values are baked in at build time. Also make sure ' +
+            'GOOGLE_CLIENT_ID is set on the backend (this button fell back to it and ' +
+            'got nothing).'
+        );
+      }
       return;
     }
     if (!buttonRef.current) return;
@@ -118,7 +152,7 @@ export default function GoogleSignInButton({ onToken, disabled }: GoogleSignInBu
       cancelled = true;
       if (verifyTimer) window.clearTimeout(verifyTimer);
     };
-  }, [clientId]);
+  }, [clientId, resolved]);
 
   if (!clientId) return null;
   if (failed) {
