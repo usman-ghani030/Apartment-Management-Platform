@@ -1,5 +1,12 @@
 import app from './app';
-import { startReminderQueue, stopReminderQueue, startBillingQueue, stopBillingQueue } from './queue';
+import {
+  startReminderQueue,
+  stopReminderQueue,
+  startBillingQueue,
+  stopBillingQueue,
+  startPlatformBillingQueue,
+  stopPlatformBillingQueue,
+} from './queue';
 
 const port = process.env.PORT || 4000;
 
@@ -9,6 +16,7 @@ app.listen(port, () => {
   // handles unavailability gracefully and the API keeps working regardless.
   void startReminderQueue();
   void startBillingQueue();
+  void startPlatformBillingQueue();
 });
 
 // Graceful shutdown so in-flight reminder jobs finish before exit.
@@ -17,6 +25,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     void (async () => {
       await stopReminderQueue();
       await stopBillingQueue();
+      await stopPlatformBillingQueue();
       process.exit(0);
     })();
   });

@@ -2,16 +2,18 @@
 
 import React, { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { CheckCircle, XCircle, LogOut, Clock, User, PackagePlus, X } from 'lucide-react';
+import { CheckCircle, XCircle, LogOut, Clock, User, PackagePlus, X, HelpCircle } from 'lucide-react';
 import { ApiError, apiPost, apiGet, apiUpload } from '@/lib/api';
 import type { VisitorPassResponse } from '@apartment/shared';
+import { FAQSection, GUARD_FAQS } from '@/components/faq-section';
 
-type GuardView = 'scan' | 'parcels' | 'recent';
+type GuardView = 'scan' | 'parcels' | 'recent' | 'faqs';
 
 function viewFromPath(pathname: string): GuardView {
   const seg = pathname.replace('/dashboard/guard', '').split('/').filter(Boolean)[0];
   if (seg === 'parcels') return 'parcels';
   if (seg === 'activity') return 'recent';
+  if (seg === 'faqs') return 'faqs';
   return 'scan';
 }
 
@@ -328,6 +330,21 @@ export default function GuardDashboard() {
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 text-center">
           <Clock className="w-8 h-8 text-gray-700 mx-auto mb-2" />
           <p className="text-body-sm text-gray-700">Recent gate activity will appear here</p>
+        </div>
+      )}
+
+      {view === 'faqs' && (
+        <div className="max-w-2xl">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-9 h-9 rounded-xl bg-accent-50 flex items-center justify-center flex-shrink-0">
+              <HelpCircle className="w-4.5 h-4.5 text-accent-600" />
+            </div>
+            <div>
+              <h1 className="text-display-sm text-gray-900">Help &amp; FAQs</h1>
+              <p className="text-body-sm text-gray-700">Answers to the questions guards ask most.</p>
+            </div>
+          </div>
+          <FAQSection faqs={GUARD_FAQS} audience="security guards" showHeader={false} />
         </div>
       )}
     </>

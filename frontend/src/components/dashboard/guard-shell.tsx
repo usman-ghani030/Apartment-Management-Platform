@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  Shield, Scan, Package, Clock, LayoutDashboard, Menu, X, LogOut,
+  Shield, Scan, Package, Clock, LayoutDashboard, Menu, X, LogOut, HelpCircle,
 } from 'lucide-react';
 import { auth, ApiError } from '@/lib/api';
 import type { AuthResponse } from '@apartment/shared';
@@ -22,6 +22,12 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
       { icon: Scan, label: 'Scan QR', href: '/dashboard/guard' },
       { icon: Package, label: 'Packages', href: '/dashboard/guard/parcels' },
       { icon: Clock, label: 'Recent Activity', href: '/dashboard/guard/activity' },
+    ],
+  },
+  {
+    label: 'Support',
+    items: [
+      { icon: HelpCircle, label: 'FAQs', href: '/dashboard/guard/faqs' },
     ],
   },
 ];
@@ -207,8 +213,9 @@ export function GuardShell({ children }: { children: React.ReactNode }) {
             >
               <Menu className="w-4.5 h-4.5 text-gray-700" />
             </button>
+            {/* Brand lives in the sidebar — this is the society context only, so
+                the dashboard doesn't show two logos at once. */}
             <button onClick={() => router.push('/')} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-              <img src="/logo3.png" alt="OmniHome" className="h-[110px] w-auto object-contain" />
               <div className="text-left">
                 <p className="text-body-sm font-semibold text-gray-900">Security Gate</p>
                 <p className="text-caption-xs text-gray-700">{society?.societyName || 'Dashboard'}</p>

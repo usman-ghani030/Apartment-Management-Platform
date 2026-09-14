@@ -9,6 +9,14 @@ import { logAudit } from '../lib/audit';
 import { sendNotification } from '../lib/notifications';
 import { CreateTicketSchema, UpdateTicketSchema, AddCommentSchema } from '@apartment/shared';
 import type { TicketResponse, TicketCommentResponse } from '@apartment/shared';
+import { sendEmail } from '../lib/email';
+import {
+  buildVendorAssignmentEmail,
+  buildVendorTicketUrl,
+  formatTicketRef,
+  generateVendorAccessToken,
+  getPublicApiBaseUrl,
+} from '../lib/vendor-access';
 
 import multer from 'multer';
 import path from 'path';
@@ -75,6 +83,7 @@ function formatTicket(t: TicketWithIncludes): TicketResponse {
     category: t.category,
     status: t.status as import('@apartment/shared').TicketStatus,
     assignedTo: t.assignedTo,
+    vendorEmail: t.vendorEmail,
     photosUrl: t.photosUrl,
     rating: t.rating,
     ratingComment: t.ratingComment,
@@ -85,6 +94,17 @@ function formatTicket(t: TicketWithIncludes): TicketResponse {
     updatedAt: t.updatedAt.toISOString(),
     commentCount: t._count.comments,
   };
+}
+
+/** Parse the stored photo JSON into a list of relative URLs, defensively. */
+function parsePhotoUrls(photosUrl: string | null): string[] {
+  if (!photosUrl) return [];
+  try {
+    const parsed = JSON.parse(photosUrl);
+    return Array.isArray(parsed) ? parsed.filter((p): p is string => typeof p === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 function formatComment(c: CommentWithAuthor): TicketCommentResponse {
@@ -244,6 +264,41 @@ router.patch('/:id', requireAuth, loadMembership, requireRole('update', 'ticket'
     if (input.category !== undefined) updateData.category = input.category;
     if (input.status !== undefined) updateData.status = input.status;
     if (input.assignedTo !== undefined) updateData.assignedTo = input.assignedTo;
+    if (input.vendorEmail !== undefined) updateData.vendorEmail = input.vendorEmail ?? null;
+
+    // ── Vendor magic link ────────────────────────────────────────────────────
+    // Assigning (or reassigning) issues the vendor a fresh token-secured link.
+    // Rotating the stored hash is what makes the previous vendor's link stop
+    // working — see lib/vendor-access.ts for why this token is neither
+    // single-use nor time-limited.
+    const assignmentChanged =
+      input.assignedTo !== undefined && input.assignedTo !== existing.assignedTo;
+    const vendorEmailChanged =
+      input.vendorEmail !== undefined && input.vendorEmail !== existing.vendorEmail;
+    const effectiveVendor =
+      input.assignedTo !== undefined ? input.assignedTo : existing.assignedTo;
+    // Never fall back to the *previous* vendor's address when the vendor name
+    // changes — that would email one vendor another vendor's job.
+    const effectiveVendorEmail = input.vendorEmail !== undefined
+      ? input.vendorEmail
+      : (assignmentChanged ? null : existing.vendorEmail);
+
+    let vendorAccessToken: string | null = null;
+    const closingNow = input.status === 'CLOSED' && existing.status !== 'CLOSED';
+    if ((assignmentChanged || vendorEmailChanged) && !closingNow && existing.status !== 'CLOSED') {
+      if (effectiveVendor && effectiveVendorEmail) {
+        const generated = generateVendorAccessToken();
+        vendorAccessToken = generated.raw;
+        updateData.vendorEmail = effectiveVendorEmail;
+        updateData.vendorAccessTokenHash = generated.hash;
+        updateData.vendorAccessTokenIssuedAt = new Date();
+      } else {
+        // No usable contact email — issue no link, and revoke any stale one so
+        // it can't keep granting access to an unassigned vendor.
+        updateData.vendorAccessTokenHash = null;
+        updateData.vendorAccessTokenIssuedAt = null;
+      }
+    }
 
     // Validate status transitions (basic enforcement)
     if (input.status && input.status !== existing.status) {
@@ -282,6 +337,13 @@ router.patch('/:id', requireAuth, loadMembership, requireRole('update', 'ticket'
     // analytics for resolution time; unlike updatedAt it doesn't move on re-rating).
     if (input.status === 'CLOSED' && existing.status !== 'CLOSED') {
       updateData.closedAt = new Date();
+      // Closing ends vendor access. The hash is deliberately left in place (not
+      // cleared) so a vendor clicking an old link is told the ticket was closed
+      // rather than getting a generic "invalid link" — the authoritative gate is
+      // the CLOSED check in routes/vendor-portal.ts, which denies access on
+      // every request. If a "reopen" transition is ever added, it MUST rotate
+      // this token so the old link cannot come back to life.
+      vendorAccessToken = null;
     }
 
     const ticket = await prisma.ticket.update({
@@ -289,6 +351,43 @@ router.patch('/:id', requireAuth, loadMembership, requireRole('update', 'ticket'
       data: updateData,
       include: TICKET_INCLUDES,
     });
+
+    // Email the vendor their access link — always via the shared provider
+    // (ADR 004), never Nodemailer directly.
+    if (vendorAccessToken && ticket.assignedTo && ticket.vendorEmail) {
+      const society = await prisma.society.findUnique({
+        where: { id: societyId },
+        select: { name: true },
+      });
+      const photoUrls = parsePhotoUrls(ticket.photosUrl).map(
+        (p) => `${getPublicApiBaseUrl()}${p}`
+      );
+      const email = buildVendorAssignmentEmail({
+        vendorName: ticket.assignedTo,
+        societyName: society?.name ?? 'your society',
+        ticketRef: formatTicketRef(ticket.id),
+        title: ticket.title,
+        description: ticket.description,
+        category: ticket.category,
+        unitNumber: ticket.unit?.unitNumber ?? null,
+        photoUrls,
+        ticketUrl: buildVendorTicketUrl(vendorAccessToken),
+      });
+
+      try {
+        await sendEmail({ to: ticket.vendorEmail, ...email });
+      } catch (err) {
+        // The assignment is saved, but the vendor never received the link — say
+        // so rather than returning a success the admin would misread.
+        const detail = err instanceof Error ? err.message : String(err);
+        console.error(`[VendorAssignment] delivery failed for ticket ${ticket.id}: ${detail}`);
+        throw new AppError(
+          ErrorCodes.EMAIL_SEND_FAILED,
+          502,
+          'The vendor was assigned, but the email with their access link could not be sent. Check the email settings, then re-save the assignment to try again.'
+        );
+      }
+    }
 
     await logAudit({
       societyId, actorUserId: req.user!.id, action: 'TICKET_UPDATED',
@@ -307,7 +406,11 @@ router.patch('/:id', requireAuth, loadMembership, requireRole('update', 'ticket'
       });
     }
 
-    sendSuccess(res, formatTicket(ticket));
+    // `vendorLinkSent` is only ever present when this response issued a link.
+    const response: TicketResponse = vendorAccessToken
+      ? { ...formatTicket(ticket), vendorLinkSent: true }
+      : formatTicket(ticket);
+    sendSuccess(res, response);
   } catch (err) { next(err); }
 });
 

@@ -30,6 +30,12 @@ export default function AdminTicketsPage() {
   const [selected, setSelected] = useState<TicketResponse | null>(null);
   const [comment, setComment] = useState('');
   const [assignTo, setAssignTo] = useState('');
+  // Vendor magic link: the email the job link is sent to, plus UI state for
+  // reassignment and the "link sent" confirmation.
+  const [assignEmail, setAssignEmail] = useState('');
+  const [assigning, setAssigning] = useState(false);
+  const [reassigning, setReassigning] = useState(false);
+  const [assignNotice, setAssignNotice] = useState('');
   const [error, setError] = useState('');
   // Vendor ratings (Phase 7 slice 3)
   const [vendorRatings, setVendorRatings] = useState<VendorRatingSummary[]>([]);
@@ -69,6 +75,9 @@ export default function AdminTicketsPage() {
     try {
       setSelected(await apiGet<TicketResponse>(`/api/v1/tickets/${id}`));
       setAssignTo('');
+      setAssignEmail('');
+      setReassigning(false);
+      setAssignNotice('');
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
     }
@@ -107,12 +116,27 @@ export default function AdminTicketsPage() {
 
   const handleAssign = async (id: string) => {
     if (!assignTo.trim()) return;
+    setAssigning(true);
+    const email = assignEmail.trim();
     try {
-      await apiPatch(`/api/v1/tickets/${id}`, { assignedTo: assignTo, status: 'ASSIGNED' });
-      setAssignTo('');
-      viewTicket(id);
+      const payload: Record<string, unknown> = { assignedTo: assignTo.trim() };
+      if (email) payload.vendorEmail = email;
+      // Only the first assignment moves the ticket out of OPEN — on reassignment
+      // the ticket has already progressed and the status must be left alone.
+      if (selected?.status === 'OPEN') payload.status = 'ASSIGNED';
+
+      const updated = await apiPatch<TicketResponse>(`/api/v1/tickets/${id}`, payload);
+      setError('');
+      await viewTicket(id);
+      setAssignNotice(
+        updated.vendorLinkSent
+          ? `Assigned — the job link was emailed to ${email}.`
+          : 'Assigned, but no vendor email was provided so no job link was sent.'
+      );
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
+    } finally {
+      setAssigning(false);
     }
   };
 
@@ -208,12 +232,32 @@ export default function AdminTicketsPage() {
             )}
             <h1 className="text-xl font-bold mb-1">{selected.title}</h1>
             <div className="text-xs text-gray-700 mb-3">{selected.residentName} · Unit {selected.unitNumber || 'N/A'} · {new Date(selected.createdAt).toLocaleDateString()}</div>
-            {selected.assignedTo ? (
-              <div className="text-xs bg-blue-500/10 text-blue-400 rounded-lg px-3 py-1.5 mb-3 inline-block">Assigned: {selected.assignedTo}</div>
+            {selected.assignedTo && !reassigning ? (
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <div className="text-xs bg-blue-500/10 text-blue-400 rounded-lg px-3 py-1.5 inline-block">
+                  Assigned: {selected.assignedTo}{selected.vendorEmail ? ` · ${selected.vendorEmail}` : ''}
+                </div>
+                {selected.status !== 'CLOSED' && (
+                  <button
+                    onClick={() => {
+                      setAssignTo(selected.assignedTo || '');
+                      setAssignEmail(selected.vendorEmail || '');
+                      setReassigning(true);
+                    }}
+                    className="text-xs text-gray-700 hover:text-gray-900 underline"
+                  >
+                    Reassign
+                  </button>
+                )}
+              </div>
             ) : (
               <div className="flex flex-wrap gap-2 mb-3 items-center">
                 <input value={assignTo} onChange={(e) => setAssignTo(e.target.value)} placeholder="Assign to vendor..." className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50" />
-                <button onClick={() => handleAssign(selected.id)} className="flex items-center gap-1 text-xs bg-accent-600 hover:bg-accent-700 text-white rounded-lg px-3 py-1.5 transition-colors"><UserPlus className="w-3 h-3" /> Assign</button>
+                <input value={assignEmail} onChange={(e) => setAssignEmail(e.target.value)} type="email" placeholder="Vendor email (for the job link)" maxLength={200} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50" />
+                <button onClick={() => handleAssign(selected.id)} disabled={assigning} className="flex items-center gap-1 text-xs bg-accent-600 hover:bg-accent-700 disabled:opacity-50 text-white rounded-lg px-3 py-1.5 transition-colors"><UserPlus className="w-3 h-3" /> {assigning ? 'Assigning…' : 'Assign'}</button>
+                {reassigning && (
+                  <button onClick={() => setReassigning(false)} className="text-xs text-gray-700 hover:text-gray-900 px-2">Cancel</button>
+                )}
                 {/* Inline vendor rating while typing an assignee name */}
                 {assignTo.trim() && ratingFor(assignTo) && (
                   <span className="flex items-center gap-1 text-[11px] bg-amber-500/10 text-amber-600 rounded-lg px-2 py-1">
@@ -221,8 +265,12 @@ export default function AdminTicketsPage() {
                     {ratingFor(assignTo)!.avgRating.toFixed(1)} · {ratingFor(assignTo)!.count} rating{ratingFor(assignTo)!.count === 1 ? '' : 's'}
                   </span>
                 )}
+                {!reassigning && (
+                  <span className="text-[11px] text-gray-500">Add an email to send the vendor a no-login job link.</span>
+                )}
               </div>
             )}
+            {assignNotice && <div className="text-xs text-emerald-600 mb-3">{assignNotice}</div>}
             {error && <div className="text-xs text-red-400 mb-2">{error}</div>}
             <p className="text-sm text-gray-700 whitespace-pre-wrap mb-6">{selected.description}</p>
 

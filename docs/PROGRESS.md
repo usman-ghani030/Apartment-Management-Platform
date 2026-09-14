@@ -178,6 +178,8 @@
 ## Architectural Decisions Logged
 - **ADR-001**: Custom roll-your-own auth (bcrypt + JWT in HTTP-only cookies).
 - **ADR-002**: Cloudinary for file storage (optimized image transform and upload).
+- **ADR-004**: Nodemailer over Gmail SMTP behind an `EmailProvider` interface (2026-09-12).
+- **ADR-005**: Vendor access to assigned tickets via a hashed, no-expiry magic link — no vendor accounts (2026-09-13).
 
 ---
 
@@ -475,8 +477,91 @@ Goal: every route/form validates input at the boundary with clear `{ data: null,
 
 ---
 
+## Vendor Ticket Magic Link (no-login vendor status updates) ✅
+
+### Slice: Assign a vendor → they get a token-secured link → they update the ticket
+
+Closes the gap where vendors had no way to learn about an assignment and admins relayed every status change by hand. Vendors still have **no accounts** (PLAN.md §13) — the token is the credential. See **ADR 005** for the security model.
+
+- [x] Prisma schema: `Ticket.vendorEmail`, `Ticket.vendorAccessTokenHash` (unique), `Ticket.vendorAccessTokenIssuedAt`; migration `20260913000000_add_vendor_access_token` (additive + nullable → backfill-safe) — done 2026-09-13
+- [x] Shared: `UpdateTicketSchema.vendorEmail`; `VendorStatusUpdateValues`/`VendorStatusUpdateSchema`; `VendorTicketView`; `TicketResponse.vendorEmail` + `vendorLinkSent` — done 2026-09-13
+- [x] `backend/src/lib/vendor-access.ts` — 256-bit CSPRNG token (`crypto.randomBytes(32)`, base64url), **only the SHA-256 hash persisted**; magic-link URL from `FRONTEND_URL`; absolute photo URLs from `API_PUBLIC_URL`; assignment email template; the vendor transition table — done 2026-09-13
+- [x] Token is deliberately **not single-use and not time-limited** (the vendor returns over several days); it is invalidated by ticket state instead — rotated on reassignment, cleared on unassign, and denied on CLOSED by an explicit status check (the hash is intentionally kept on closure so the vendor is told *"this ticket has been closed"* rather than getting a generic invalid-link error; a future "reopen" path must rotate the token) — done 2026-09-13
+- [x] `backend/src/routes/vendor-portal.ts` (public, no auth) — `GET /api/v1/vendor/ticket/:token` (limited view) and `PATCH /api/v1/vendor/ticket/:token/status` — done 2026-09-13
+  - Lookup is by token hash, which is a **unique column on the Ticket row** → structurally scoped to one ticket + society + vendor; the route also fails closed on `deletedAt`, missing `assignedTo`, and `CLOSED`, and never accepts a ticket id from the client
+  - View exposes only reference/society/title/description/category/unit/photos/status — no resident name/email/phone, no financial data, no comments, no other tickets
+  - Vendor transitions limited to `ASSIGNED → IN_PROGRESS → RESOLVED`; `CLOSED` stays admin-only (it captures the Phase 7 rating)
+- [x] Audit: `TICKET_STATUS_UPDATED_BY_VENDOR` with `actorUserId: null` and `after.vendor` / `after.via` so vendor actions are unmistakably attributed to the vendor, not a user — done 2026-09-13
+- [x] Rate limiting: `vendorTokenIpLimiter` (60/15min) + `vendorTokenLookupLimiter` (30/15min, keyed by token **hash**) — done 2026-09-13
+- [x] `PATCH /api/v1/tickets/:id` — assigning/reassigning with an email issues + rotates the token and sends the email through the shared `EmailProvider` (ADR 004); closing or unassigning revokes it; reassigning **never** falls back to the previous vendor's address — done 2026-09-13
+- [x] A failed assignment email returns **502 `EMAIL_SEND_FAILED`** (the assignment is saved) rather than a success the admin would misread as "the vendor knows" — done 2026-09-13
+- [x] Frontend: public page `frontend/src/app/vendor/ticket/[token]/page.tsx` (no login, mobile-friendly, photos, Start work → Mark as resolved with confirm) + `vendorPortal` client in `api.ts` — done 2026-09-13
+- [x] Frontend: admin ticket page — vendor email field, Reassign flow, "link emailed" confirmation, assigned-vendor email shown on the ticket — done 2026-09-13
+- [x] `.env.example`: documented `API_PUBLIC_URL` (absolute links in emails) and clarified `FRONTEND_URL` + the Gmail vars' role — done 2026-09-13
+- [x] Tests: **178/178 passing** (17 new — valid token view, malformed token never hits the DB, wrong-ticket token, closed-ticket denial + "ticket has been closed" message, unassigned denial, token rate limit, vendor transitions incl. CLOSED rejection and skipped transitions, audit attribution, hash-at-rest issuance, reassignment rotation, no email reuse on reassign, closure ends vendor access, 502 on email failure) — done 2026-09-13
+- [x] `docs/adr/005-vendor-magic-link-access.md` written (security model + why the token is hashed, non-expiring, and can't close a ticket) and `docs/MANUAL_TEST_GUIDE_VENDOR_TICKET_LINK.md` added — done 2026-09-13
+- [x] **Live-verified against the dev DB** (migration applied via `prisma migrate deploy`; no live session could be run until Docker was started): assigned a real ticket to a real vendor inbox → `200` + `vendorLinkSent: true` + a 64-char SHA-256 hash stored (raw 43-char token absent from the DB); `GET /vendor/ticket/:token` → `200` with only the limited fields (no resident data); vendor `IN_PROGRESS` → `200`, `CLOSED` → `400`, `RESOLVED` → `200`, transition-after-RESOLVED → `400`; audit rows show `actorUserId` NULL with `after.vendor` + `via: vendor_magic_link`; reassignment → hash rotated and the **old link 404s**; after the admin closed the ticket the link returns the **"ticket has been closed"** message — done 2026-09-13
+- [ ] **Still to confirm by hand:** that the assignment email actually lands in a real inbox and its button opens the vendor page end-to-end (the API side is verified; the inbox is yours to check) — see `docs/MANUAL_TEST_GUIDE_VENDOR_TICKET_LINK.md`
+
+**Notes:**
+- The link is a bearer credential — anyone it's forwarded to can update the ticket. Stated in the email and on the page, and revocable by reassigning or closing.
+- Migration needs `prisma migrate deploy` on Render.
+- Set `API_PUBLIC_URL` to the Render URL in production, or the email's photo links point at `localhost:4000`.
+
+---
+
+## Dashboard Polish — FAQs + duplicate logo fix ✅
+
+- [x] **Duplicate logo fixed:** each dashboard shell (`admin-shell`, `resident-shell`, `guard-shell`) rendered `logo3.png` in **both** the sidebar and the sticky top bar, so every dashboard page showed two logos on desktop. Removed the top-bar `<img>`; the sidebar keeps the logo + OmniHome wordmark as the single brand lockup, and the top bar is now society-name + role context only (also removes the duplicated mark on mobile) — done 2026-09-13
+- [x] **FAQs moved to dedicated sidebar pages** — `FAQSection` (accordion, same visual language as the landing page's FAQ) plus `ADMIN_FAQS` / `RESIDENT_FAQS` / `GUARD_FAQS` in `frontend/src/components/faq-section.tsx`; new pages `/dashboard/admin/faqs` and `/dashboard/resident/faqs`, guard FAQ view inside the existing `[[...view]]` catch-all (`/dashboard/guard/faqs`), each linked from its shell's sidebar as "FAQs". Dashboard **home pages no longer render FAQs** (initially added there, then removed per user preference) — done 2026-09-13
+- [x] FAQ answers describe *actual* implemented behaviour (CSV import, recurring billing vs dues reminders, the vendor no-login job link, transfer clearance, targeted notices, audit/analytics, SOS recipients, QR check-in, parcels, polls, Google-only password reset) — **keep these in sync when a feature changes** — done 2026-09-13
+- [x] Frontend typecheck + `next build` clean; all three dashboard routes compile and serve (verified `HTTP 200`); FAQ content confirmed present in each dashboard's build chunk — done 2026-09-13
+
+**Notes:**
+- Chose to keep the **sidebar** logo (brand) and drop the **top-bar** logo (context) — trivially reversible if the opposite is preferred.
+- Do not run `next build` while a `next dev` server is running against the same `.next` directory: it briefly 500s the dev server until it recompiles (observed, recovered on its own).
+
+---
+
+## Phase 9 — Platform Billing (Society Subscription) ✅
+
+Societies paying the PLATFORM (ADR 006) — entirely separate from resident dues (Phase 2 `Invoice`/Safepay). Progressive per-unit pricing: first 15 units free, 16–50 → Rs 20/u, 51–200 → Rs 12/u, 201–500 → Rs 8/u (worked examples: 50 → Rs 700, 100 → Rs 1,300, 200 → Rs 2,500, 500 → Rs 4,900). No feature-gating anywhere; no account restriction on overdue (notification only).
+
+- [x] Rate table as CONFIG — `backend/src/config/platform-pricing.ts` (bands + cap); price changes are a config edit, not code — done 2026-09-14
+- [x] Prisma: `PlatformInvoice` (societyId, billingPeriod, unitCountSnapshot, calculationBreakdown JSON, totalAmountPaisa, status PENDING/PAID/OVERDUE, dueDate, generatedAt, paidAt, markedPaidBySuperAdminUserId, soft-delete, `@@unique([societyId, billingPeriod])` for idempotency) + `PlatformCustomQuoteFlag` (501+ societies, unique per society+period); migration `20260914000000_add_platform_billing` (additive) — done 2026-09-14
+- [x] `backend/src/lib/platform-billing.ts` — generation (≤15 units skipped silently; 501+ flagged for custom quote, never auto-invoiced; dry-run support; P2002 race-safe), overdue sweep (mark + reminder email to Committee Admins via EmailProvider per ADR 004), mark-as-paid (the ONLY path to PAID; records paidAt + super admin id + audit) — done 2026-09-14
+- [x] BullMQ jobs: monthly generation (`0 8 1 * *`, `PLATFORM_BILLING_CRON`) + daily overdue check (`0 9 * * *`, `PLATFORM_OVERDUE_CRON`), same graceful-disable pattern as Phase 7/8 queues — done 2026-09-14
+- [x] Routes `/api/v1/platform-billing` — `GET /` (own society, read-only, admins), `GET /all` + `GET /custom-quotes` + `POST /run-generation` (dryRun default off, body-controlled) + `POST /run-overdue-check` + `PATCH /:id/mark-paid` — the last four re-checked server-side as SUPER_ADMIN **membership role** on every request; no self-service "I paid" for Committee Admins — done 2026-09-14
+- [x] Frontend `/dashboard/admin/platform-billing` — **status banner for every tier** (`GET /status`: free tier → "You're on the free tier 🎉" with unit count + what happens when they grow; 501+ → custom-pricing notice; billable → estimated fee today), payment instructions with `[BANK DETAILS PLACEHOLDER — TO BE PROVIDED]` (hidden on the free tier — nothing to pay), own-society invoice cards with expandable progressive breakdown (transparency), ops panels (dry run / generate / overdue check, custom-quote list, all-societies list with Mark as paid) probed via 403, not assumed; sidebar link "Platform billing" under Finance & Records — done 2026-09-14
+- [x] Shared types: `PlatformInvoiceStatus`, `PlatformInvoiceResponse` (breakdown + rupees + paisa), `PlatformCustomQuoteFlagResponse`, `PlatformBillingRunResult`, `PlatformOverdueResult`, `MarkPlatformInvoicePaidSchema`; permissions resource `platform_billing` (read: admins only) — done 2026-09-14
+- [x] Tests: **211/211 passing** (33 new — pricing worked examples 50/100/200/500 + strictly-increasing sweep 1..500 + band boundaries 16/51/201; route tests for tenant scoping, resident 403, super-admin gates on every ops endpoint, mark-paid flow incl. 409 double-mark, generation dry-run writes nothing, 501+ flag path, free-tier skip, overdue emails, status endpoint free-tier/billable/403) — done 2026-09-14
+- [x] Manual test guide: `docs/MANUAL_TEST_GUIDE_PLATFORM_BILLING.md` (migration + SUPER_ADMIN seeding SQL, dry-run-first flow, progressive totals table, idempotency checks, custom-quote flag setup/teardown, cross-tenant curl checks, overdue email test) — done 2026-09-14
+
+**Notes:**
+- SUPER_ADMIN here is a **membership role**, not a global account — ops surfaces are gated on it per-request server-side; the UI hides them for non-ops but the server is the enforcement point
+- First production run should use the **dry run** button (and/or `POST /run-generation {"dryRun":true}`) so no wrong invoices are generated on day one
+- Amounts stored in paisa (rupees × 100), same convention as `Invoice.amount`; breakdown JSON shows band-level math for the admin view
+- Migration needs `prisma migrate deploy` on Render; no new required env vars (cron overrides optional)
+
+---
+
+## 2026-09-14 — Homepage Pricing Aligned with ADR 006
+
+- Landing page pricing section rewritten to match the real pricing model (was fictional flat tiers: Starter Free "up to 50 units" / Pro Rs 2,000 / Enterprise Rs 5,000 with feature gating — contradicting ADR 006):
+  - **Starter** — Free, up to 15 units forever, every feature included
+  - **Growth** — headline **Rs 700/mo** (a 50-unit society), with 100 → Rs 1,300 and 200 → Rs 2,500 in the bullets; progressive math and first-15-free explained, "Most popular"
+  - **Scale** — headline **Rs 3,300/mo** (a 300-unit society), with 500 → Rs 4,900 in the bullets; 501+ → custom quote
+  - Revision: per-unit rates were removed from card headlines after review ("Rs 20/unit" read as trivially cheap) — real calculated monthly totals are now the headline, per-unit bands remain only in the explanatory bullets and FAQ
+- Section heading/copy now states progressive per-unit pricing and the ADR 006 no-feature-gating rule ("Every plan includes every feature")
+- Hero sub-line and final CTA updated: "Free for up to 15 units · No credit card required" (was "14-day free trial")
+- Landing FAQ: added "How does pricing work?" (full progressive breakdown); reworded white-label answer (was "Enterprise plans include…" — tier no longer exists)
+- `PricingCard` component: added optional `priceSuffix` (e.g. "/unit/month") instead of hardcoded "/month"
+- Verified: frontend typecheck clean; landing page serves 200 with new copy
+
+---
+
 ## Notes for Next Session
-- **Phase 9 (AI Layer)** is next: Python + FastAPI service, pgvector, semantic search, AI features
+- **Phase 10 (AI Layer)** is next: Python + FastAPI service, pgvector, semantic search, AI features
 - Backend runs inside Docker at `http://localhost:4000`, frontend at `http://localhost:3000`
 - Seeded test creds: `admin@sunrise.com` / `admin123`, `resident@sunrise.com` / `resident123`
 - Auth uses HTTP-only cookies — `credentials: 'include'` on all fetch calls

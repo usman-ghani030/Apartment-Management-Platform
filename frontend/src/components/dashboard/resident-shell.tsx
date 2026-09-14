@@ -4,7 +4,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   LayoutDashboard, FileText, BarChart3, Folder, Wrench, CalendarRange,
-  QrCode, Package, CreditCard, Bell, LogOut, Menu, X, Home,
+  QrCode, Package, CreditCard, Bell, LogOut, Menu, X, Home, HelpCircle,
 } from 'lucide-react';
 import { auth, ApiError, apiGet } from '@/lib/api';
 import type { AuthResponse } from '@apartment/shared';
@@ -58,6 +58,12 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
     label: 'Billing',
     items: [
       { icon: CreditCard, label: 'Payments', href: '/dashboard/resident/invoices' },
+    ],
+  },
+  {
+    label: 'Support',
+    items: [
+      { icon: HelpCircle, label: 'FAQs', href: '/dashboard/resident/faqs' },
     ],
   },
 ];
@@ -236,8 +242,9 @@ export function ResidentShell({ children }: { children: React.ReactNode }) {
               >
                 <Menu className="w-4.5 h-4.5 text-gray-700" />
               </button>
+              {/* Brand lives in the sidebar — this is the society context only, so
+                  the dashboard doesn't show two logos at once. */}
               <button onClick={() => router.push('/')} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-                <img src="/logo3.png" alt="OmniHome" className="h-[110px] w-auto object-contain" />
                 <div className="text-left">
                   <p className="text-body-sm font-semibold text-gray-900">{society?.societyName || 'My Community'}</p>
                   <p className="text-caption-xs text-gray-700">Resident</p>

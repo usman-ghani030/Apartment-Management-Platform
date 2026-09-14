@@ -2,6 +2,7 @@ import { Queue, Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { sendDueReminders } from '../lib/due-reminders';
 import { generateRecurringInvoices } from '../lib/recurring-billing';
+import { generatePlatformInvoices, markOverduePlatformInvoices } from '../lib/platform-billing';
 
 /**
  * Background job infrastructure (docs/PLAN.md §5 — one queue module owns all jobs).
@@ -178,4 +179,94 @@ export async function stopBillingQueue(): Promise<void> {
     await billingQueue?.close();
   } catch { /* ignore */ }
   billingQueue = null;
+}
+
+// ── Platform Billing Jobs (Phase 9, ADR 006) ───────────────────────────────
+// Monthly generation (societies paying the platform) + daily overdue check.
+// Same resilience model: Redis unavailable → queues disabled, API unaffected,
+// manual triggers still work via /api/v1/platform-billing/run-*.
+
+const PLATFORM_BILLING_JOB_NAME = 'platform-billing';
+const PLATFORM_BILLING_SCHEDULER_ID = 'platform-billing-scheduler';
+// 08:00 UTC on the 1st of every month. First real runs should use the manual
+// dry-run trigger first (execution rule: don't generate wrong invoices day one).
+const PLATFORM_BILLING_DEFAULT_CRON = '0 8 1 * *';
+const PLATFORM_BILLING_CRON = process.env.PLATFORM_BILLING_CRON || PLATFORM_BILLING_DEFAULT_CRON;
+
+const PLATFORM_OVERDUE_JOB_NAME = 'platform-overdue';
+const PLATFORM_OVERDUE_SCHEDULER_ID = 'platform-overdue-scheduler';
+const PLATFORM_OVERDUE_DEFAULT_CRON = '0 9 * * *'; // daily, 09:00 UTC
+const PLATFORM_OVERDUE_CRON = process.env.PLATFORM_OVERDUE_CRON || PLATFORM_OVERDUE_DEFAULT_CRON;
+
+let platformBillingQueue: Queue | null = null;
+let platformBillingWorker: Worker | null = null;
+let platformOverdueQueue: Queue | null = null;
+let platformOverdueWorker: Worker | null = null;
+
+async function processPlatformBillingJob(job: Job): Promise<{ created: number; skipped: number }> {
+  const result = await generatePlatformInvoices();
+  return {
+    created: result.created,
+    skipped: result.skippedFree + result.skippedExisting,
+  };
+}
+
+async function processPlatformOverdueJob(job: Job): Promise<{ markedOverdue: number }> {
+  const result = await markOverduePlatformInvoices();
+  return { markedOverdue: result.markedOverdue };
+}
+
+export async function startPlatformBillingQueue(): Promise<void> {
+  try {
+    const conn = getConnection();
+    if (!conn) {
+      console.log('[Queue] REDIS_URL not set — platform billing jobs disabled (manual trigger still available)');
+      return;
+    }
+
+    platformBillingQueue = new Queue(PLATFORM_BILLING_JOB_NAME, { connection: conn });
+    platformBillingWorker = new Worker(PLATFORM_BILLING_JOB_NAME, processPlatformBillingJob, { connection: conn });
+    await platformBillingQueue.upsertJobScheduler(
+      PLATFORM_BILLING_SCHEDULER_ID,
+      { pattern: PLATFORM_BILLING_CRON },
+      { name: PLATFORM_BILLING_JOB_NAME, data: {} }
+    );
+    platformBillingWorker.on('completed', (job) => {
+      console.log(`[Queue] platform-billing completed — created ${job.returnvalue?.created ?? 0}, skipped ${job.returnvalue?.skipped ?? 0}`);
+    });
+    platformBillingWorker.on('failed', (_job, err) => {
+      console.error(`[Queue] platform-billing failed: ${err instanceof Error ? err.message : err}`);
+    });
+
+    platformOverdueQueue = new Queue(PLATFORM_OVERDUE_JOB_NAME, { connection: conn });
+    platformOverdueWorker = new Worker(PLATFORM_OVERDUE_JOB_NAME, processPlatformOverdueJob, { connection: conn });
+    await platformOverdueQueue.upsertJobScheduler(
+      PLATFORM_OVERDUE_SCHEDULER_ID,
+      { pattern: PLATFORM_OVERDUE_CRON },
+      { name: PLATFORM_OVERDUE_JOB_NAME, data: {} }
+    );
+    platformOverdueWorker.on('completed', (job) => {
+      console.log(`[Queue] platform-overdue completed — markedOverdue ${job.returnvalue?.markedOverdue ?? 0}`);
+    });
+    platformOverdueWorker.on('failed', (_job, err) => {
+      console.error(`[Queue] platform-overdue failed: ${err instanceof Error ? err.message : err}`);
+    });
+
+    console.log(`[Queue] Platform billing scheduled (${PLATFORM_BILLING_CRON}); overdue check scheduled (${PLATFORM_OVERDUE_CRON}, ${process.env.TZ || 'UTC'})`);
+  } catch (err) {
+    console.error(
+      `[Queue] Could not start platform billing jobs (${err instanceof Error ? err.message : err}) — automated jobs disabled; API unaffected`
+    );
+  }
+}
+
+export async function stopPlatformBillingQueue(): Promise<void> {
+  try { await platformBillingWorker?.close(); } catch { /* ignore */ }
+  platformBillingWorker = null;
+  try { await platformBillingQueue?.close(); } catch { /* ignore */ }
+  platformBillingQueue = null;
+  try { await platformOverdueWorker?.close(); } catch { /* ignore */ }
+  platformOverdueWorker = null;
+  try { await platformOverdueQueue?.close(); } catch { /* ignore */ }
+  platformOverdueQueue = null;
 }

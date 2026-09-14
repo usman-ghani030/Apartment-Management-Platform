@@ -259,7 +259,30 @@ Added based on competitive research (Nizam). Sequenced before the AI layer for t
 - [ ] **Targeted Notifications**: extend the existing Notice/notification system (Phase 1) so admins can target a notice to specific unit(s), a category/tag, or the whole complex (current default) — not a new system, a targeting capability added to what exists.
 - [ ] **Automated Recurring Billing Schedule**: admin configures a billing cycle (day-of-month) per society. A scheduled BullMQ job (Redis-backed, same pattern as Phase 7's dues reminder job) auto-generates invoices for all active units on that date each month and sends a payment notification at generation time. **This is distinct from Phase 7's dues reminder** — that job reminds residents before an *existing* invoice's due date; this one actually creates the recurring invoice on schedule and notifies at creation. Both jobs coexist and serve different points in the billing cycle.
 
-### Phase 9 — AI Layer
+### Phase 9 — Platform Billing (Society Subscription)
+
+Per ADR 005: every feature is available to every society regardless of fee — no feature-gating system needed. The only thing that varies is the monthly platform fee, based on per-unit volume pricing.
+
+**Rate table** (starting point, not final — validate with real prospects). Calculated **progressively** (like income tax brackets) — each unit is charged at the rate of the band it falls into, not one flat rate applied to the whole count. This matters: an earlier bracket-method design was rejected because it let a society with slightly more units pay less overall at every band boundary — progressive calculation is strictly increasing with unit count, no cliffs:
+
+| Units | Rate |
+|---|---|
+| 1-15 | Free |
+| 16-50 | Rs 20/unit/month |
+| 51-200 | Rs 12/unit/month |
+| 201-500 | Rs 8/unit/month |
+| 501+ | Custom quote — capped at 500 units for the formula; beyond this, no auto-invoice, flag for a manual sales conversation instead |
+
+Example progressive totals: 50 units → Rs 700/month; 200 units → Rs 2,500/month; 500 units → Rs 4,900/month (the formulaic ceiling).
+
+- [ ] New `PlatformInvoice` entity (distinct from the resident-facing `Invoice`/dues model from Phase 2 — never confuse or merge these): societyId, billingPeriod, unitCountSnapshot, ratePerUnit, totalAmount, status (Pending/Paid/Overdue), generatedAt, paidAt, markedPaidBySuperAdminUserId.
+- [ ] Scheduled BullMQ job (monthly, same pattern as Phase 7/8 jobs): generates a `PlatformInvoice` for every active Society based on current active unit count and the progressive rate table above. Societies at or under the free threshold are skipped (no invoice generated). Societies over 500 units are also skipped from auto-invoicing — instead, flag them (e.g. a notification to the Super Admin view) for a manual custom-quote conversation.
+- [ ] Committee Admin-facing billing view: read-only invoice/payment history, current amount due, and manual payment instructions (bank details placeholder — to be filled in with real payment info before launch).
+- [ ] Super Admin (platform-ops) view: invoices across all societies, with a "Mark as Paid" action once payment is received outside the app.
+- [ ] Overdue handling: notification-only for now (email reminder to the admin via the existing EmailProvider) — no automatic account restriction, since billing collection isn't automated yet.
+- [ ] Architecture note: the rate table should live in config, not hardcoded logic, so adjusting prices later (expected, per ADR 005) is a config change, not a code change.
+
+### Phase 10 — AI Layer
 
 - [ ] Stand up `ai-service` (Python + FastAPI)
 - [ ] pgvector enabled on relevant tables (e.g. tickets, documents) for semantic search
@@ -307,8 +330,8 @@ Added based on competitive research (Nizam). Sequenced before the AI layer for t
 | 2026-07-19 | Added Redis usage, API conventions, soft-delete policy, local dev setup, and indexing baseline (self-review pass) |
 | 2026-07-19 | Resolved auth (custom JWT) and storage (Cloudinary) decisions; added ADR 001 and 002 |
 | 2026-07-19 | Switched backend hosting from Railway to Render |
+| 2026-07-19 | Added platform pricing model (ADR 005): per-unit volume pricing, no feature-gating, manual billing for now; inserted new Phase 9 — Platform Billing; AI Layer renumbered to Phase 10 |
 | 2026-07-19 | Simplified project structure: dropped Turborepo for plain npm workspaces (`frontend`, `backend`, `shared`) instead of `apps/`+`packages/` layout |
 | 2026-07-19 | Inserted new Phase 7 — Engagement & Accountability (parcel tracking, dues reminders, vendor ratings, admin analytics); AI Layer renumbered to Phase 8; payment gateway completion and email verification explicitly deferred to end of Phase 7 |
 | 2026-07-19 | Switched payment provider from Stripe to Safepay; added ADR 003 and PaymentProvider abstraction requirement |
 | 2026-07-19 | Inserted new Phase 8 — Safety, Staff & Automated Billing (SOS alerts, transfer clearance, staff management, targeted notifications, recurring billing schedule), based on Nizam competitive research; AI Layer renumbered to Phase 9 |
-| 2026-09-12 | Password-reset email delivery switched from Resend to Nodemailer over Gmail SMTP, behind a new `EmailProvider` abstraction (ADR 004); `resend` dependency and its env vars removed |

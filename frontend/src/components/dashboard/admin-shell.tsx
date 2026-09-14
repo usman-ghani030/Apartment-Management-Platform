@@ -6,7 +6,7 @@ import {
   Building2, Users, FileText, CreditCard, LogOut, Bell,
   CalendarRange, BarChart3, Folder, Clock, Home, UserPlus,
   QrCode, Scan, Menu, X, Package, Shield, PieChart, LayoutDashboard,
-  Contact, AlertTriangle,
+  Contact, AlertTriangle, HelpCircle, Landmark,
 } from 'lucide-react';
 import { auth, ApiError, apiGet } from '@/lib/api';
 import type { AuthResponse } from '@apartment/shared';
@@ -92,11 +92,18 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
     label: 'Finance & Records',
     items: [
       { icon: CreditCard, label: 'Invoices', href: '/dashboard/admin/invoices' },
+      { icon: Landmark, label: 'Platform billing', href: '/dashboard/admin/platform-billing' },
       { icon: BarChart3, label: 'Polls', href: '/dashboard/admin/polls' },
       { icon: Folder, label: 'Documents', href: '/dashboard/admin/documents' },
       { icon: Package, label: 'Packages', href: '/dashboard/admin/parcels' },
       { icon: Clock, label: 'Audit trail', href: '/dashboard/admin/audit-log' },
       { icon: PieChart, label: 'Analytics', href: '/dashboard/admin/analytics' },
+    ],
+  },
+  {
+    label: 'Support',
+    items: [
+      { icon: HelpCircle, label: 'FAQs', href: '/dashboard/admin/faqs' },
     ],
   },
 ];
@@ -354,8 +361,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               >
                 <Menu className="w-4.5 h-4.5 text-gray-700" />
               </button>
+              {/* Brand lives in the sidebar — this is the society context only, so
+                  the dashboard doesn't show two logos at once. */}
               <button onClick={() => router.push('/')} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-                <img src="/logo3.png" alt="OmniHome" className="h-[110px] w-auto object-contain" />
                 <div className="text-left">
                   <p className="text-body-sm font-semibold text-gray-900">{society?.societyName || 'Dashboard'}</p>
                   <p className="text-caption-xs text-gray-700">Committee Admin</p>

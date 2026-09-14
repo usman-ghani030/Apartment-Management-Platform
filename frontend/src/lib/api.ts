@@ -1,4 +1,16 @@
-import type { ApiResponse, AuthResponse, SignupInput, LoginInput } from '@apartment/shared';
+import type {
+  ApiResponse,
+  AuthResponse,
+  SignupInput,
+  LoginInput,
+  VendorStatusUpdate,
+  VendorTicketView,
+  PlatformInvoiceResponse,
+  PlatformCustomQuoteFlagResponse,
+  PlatformBillingRunResult,
+  PlatformOverdueResult,
+  PlatformBillingStatus,
+} from '@apartment/shared';
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
@@ -288,5 +300,59 @@ export const auth = {
     request<{ message: string; accessToken?: string; refreshToken?: string }>('/api/v1/auth/refresh', {
       method: 'POST',
       headers: getRefreshToken() ? { 'x-refresh-token': getRefreshToken()! } : {},
+    }),
+};
+
+// ── Vendor Portal API (public) ───────────────────────────────────────────────
+// Vendors have no accounts — the secret token in their emailed link is the only
+// credential, so these calls are unauthenticated by design.
+export const vendorPortal = {
+  getTicket: (token: string) =>
+    request<VendorTicketView>(`/api/v1/vendor/ticket/${encodeURIComponent(token)}`),
+
+  updateStatus: (token: string, status: VendorStatusUpdate) =>
+    request<VendorTicketView>(`/api/v1/vendor/ticket/${encodeURIComponent(token)}/status`, {
+      method: 'PATCH',
+      body: { status },
+    }),
+};
+
+// ── Platform Billing API (Phase 9, ADR 006) ─────────────────────────────────
+// Societies paying the PLATFORM — separate from resident dues (auth/invoices).
+export const platformBilling = {
+  /** Own society's current standing: unit count, free-tier flag, estimated fee. */
+  getStatus: () =>
+    request<PlatformBillingStatus>('/api/v1/platform-billing/status'),
+
+  /** Own society's invoice history (Committee Admin, read-only). */
+  listMine: () =>
+    request<PlatformInvoiceResponse[]>('/api/v1/platform-billing'),
+
+  /** Platform-ops: all societies' invoices (SUPER_ADMIN membership only). */
+  listAll: () =>
+    request<PlatformInvoiceResponse[]>('/api/v1/platform-billing/all'),
+
+  /** Platform-ops: societies flagged for a custom quote (501+ units). */
+  listCustomQuotes: () =>
+    request<PlatformCustomQuoteFlagResponse[]>('/api/v1/platform-billing/custom-quotes'),
+
+  /** Platform-ops: run the monthly generation (dryRun first!). */
+  runGeneration: (dryRun: boolean) =>
+    request<PlatformBillingRunResult>('/api/v1/platform-billing/run-generation', {
+      method: 'POST',
+      body: { dryRun },
+    }),
+
+  /** Platform-ops: run the overdue sweep now. */
+  runOverdueCheck: () =>
+    request<PlatformOverdueResult>('/api/v1/platform-billing/run-overdue-check', {
+      method: 'POST',
+    }),
+
+  /** Platform-ops: the ONLY way an invoice becomes PAID. */
+  markPaid: (id: string) =>
+    request<PlatformInvoiceResponse>(`/api/v1/platform-billing/${id}/mark-paid`, {
+      method: 'PATCH',
+      body: {},
     }),
 };

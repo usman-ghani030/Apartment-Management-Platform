@@ -329,6 +329,10 @@ export const UpdateTicketSchema = z.object({
   category: z.string().min(1).max(100).optional(),
   status: z.enum(TicketStatusValues).optional(),
   assignedTo: z.string().max(100).optional().nullable(),
+  // Vendor magic-link contact email. Supplied by the admin when assigning (or
+  // reassigning) a ticket so the assignment email with the access link can be
+  // sent. Optional — assigning without an email simply sends no link.
+  vendorEmail: z.string().email('Must be a valid email').max(200).optional().nullable(),
   // Phase 7 vendor ratings: 1-5 stars + optional comment, captured when the
   // ticket transitions to CLOSED.
   rating: z.number().int().min(1).max(5).optional(),
@@ -353,7 +357,14 @@ export interface TicketResponse {
   category: string;
   status: TicketStatus;
   assignedTo: string | null;
+  /** Vendor contact email the magic link is sent to (admin-supplied). */
+  vendorEmail: string | null;
   photosUrl: string | null;
+  /**
+   * Assignment-response hint: whether the vendor magic-link email went out.
+   * Only set on the PATCH response that (re)assigned the ticket.
+   */
+  vendorLinkSent?: boolean;
   // Phase 7 vendor ratings
   rating: number | null;
   ratingComment: string | null;
@@ -383,6 +394,41 @@ export interface TicketCommentResponse {
   authorName: string;
   content: string;
   createdAt: string;
+}
+
+// ── Vendor Magic-Link Portal (public, token-secured) ─────────────────────────
+// Vendors have no login accounts, so the token inside the emailed link is the
+// only credential. A vendor may only push the ticket forward as far as RESOLVED
+// — CLOSED is an admin action (it also captures the Phase 7 vendor rating).
+export const VendorStatusUpdateValues = ['IN_PROGRESS', 'RESOLVED'] as const;
+export type VendorStatusUpdate = (typeof VendorStatusUpdateValues)[number];
+
+export const VendorStatusUpdateSchema = z.object({
+  status: z.enum(VendorStatusUpdateValues),
+});
+export type VendorStatusUpdateInput = z.infer<typeof VendorStatusUpdateSchema>;
+
+/**
+ * The deliberately limited view of a single ticket a vendor may see through
+ * their magic link: no resident name/email/phone, no financial data, no other
+ * tickets, nothing admin-only.
+ */
+export interface VendorTicketView {
+  /** Short human-readable reference (never the internal UUID). */
+  ticketRef: string;
+  societyName: string;
+  vendorName: string;
+  title: string;
+  description: string;
+  category: string;
+  status: TicketStatus;
+  unitNumber: string | null;
+  /** Relative paths — the client prefixes them with the API base URL. */
+  photos: string[];
+  createdAt: string;
+  updatedAt: string;
+  /** The statuses this vendor is allowed to move the ticket to right now. */
+  allowedTransitions: VendorStatusUpdate[];
 }
 
 // ── Amenity / Booking Types ──────────────────────────────────────────────────
@@ -787,3 +833,80 @@ export const PingSchema = z.object({
 });
 
 export type Ping = z.infer<typeof PingSchema>;
+
+// ── Platform Billing (Phase 9, ADR 006) ─────────────────────────────────────
+// Societies paying the PLATFORM. Entirely separate from the resident dues
+// Invoice/Payment system above — different payer, different recipient.
+
+export const PlatformInvoiceStatusValues = ['PENDING', 'PAID', 'OVERDUE'] as const;
+export type PlatformInvoiceStatus = (typeof PlatformInvoiceStatusValues)[number];
+
+/** One line of the progressive calculation stored on each invoice. */
+export interface PlatformBandLine {
+  label: string; // e.g. "Units 16–50"
+  units: number;
+  ratePerUnit: number;
+  subtotal: number; // Rs
+}
+
+export interface PlatformInvoiceResponse {
+  id: string;
+  societyId: string;
+  societyName: string;
+  billingPeriod: string; // "YYYY-MM"
+  unitCountSnapshot: number;
+  breakdown: PlatformBandLine[]; // progressive calculation detail
+  totalAmountRupees: number;
+  totalAmountPaisa: number;
+  dueDate: string;
+  status: PlatformInvoiceStatus;
+  generatedAt: string;
+  paidAt: string | null;
+  markedPaidBySuperAdminName: string | null;
+}
+
+export interface PlatformCustomQuoteFlagResponse {
+  id: string;
+  societyId: string;
+  societyName: string;
+  billingPeriod: string;
+  unitCountSnapshot: number;
+  note: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+export interface PlatformBillingRunResult {
+  dryRun: boolean;
+  scannedSocieties: number;
+  created: number;
+  skippedFree: number; // ≤15 units — no invoice (no zero-amount noise)
+  skippedExisting: number; // idempotent skips
+  customQuoteFlags: number; // 501+ units — flagged, not invoiced
+  errors: string[];
+}
+
+export interface PlatformOverdueResult {
+  scanned: number;
+  markedOverdue: number;
+  remindersSent: number;
+  errors: string[];
+}
+
+export const MarkPlatformInvoicePaidSchema = z.object({
+  note: z.string().max(500).optional(),
+});
+export type MarkPlatformInvoicePaidInput = z.infer<typeof MarkPlatformInvoicePaidSchema>;
+
+/** Where a society stands today: unit count, free-tier flag, estimated fee. */
+export interface PlatformBillingStatus {
+  societyName: string;
+  unitCount: number;
+  freeUnitThreshold: number;
+  autoInvoiceCap: number;
+  isFreeTier: boolean;
+  isCustomQuote: boolean;
+  /** Progressive fee if billed right now (0 on the free tier). */
+  estimatedTotalRupees: number;
+  estimatedBreakdown: PlatformBandLine[];
+}

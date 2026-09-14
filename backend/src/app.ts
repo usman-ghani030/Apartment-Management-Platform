@@ -110,6 +110,14 @@ app.use('/api/v1/analytics', analyticsRoutes);
 import importRoutes from './routes/import-csv';
 app.use('/api/v1/import', importRoutes);
 
+// ── Vendor Portal Routes (public, token-secured — no login) ────────────────
+import vendorPortalRoutes from './routes/vendor-portal';
+app.use('/api/v1/vendor', vendorPortalRoutes);
+
+// ── Platform Billing Routes (Phase 9 — societies paying the platform) ───────
+import platformBillingRoutes from './routes/platform-billing';
+app.use('/api/v1/platform-billing', platformBillingRoutes);
+
 // ── Error Handler (must be last) ──────────────────────────────────────────
 app.use(errorHandler);
 

@@ -243,6 +243,9 @@ model Society {
   staff        Staff[]
   sosAlerts    SOSAlert[]
   invoiceReminders InvoiceReminder[]
+  // Phase 9: societies paying the PLATFORM — entirely separate from resident dues (Invoice)
+  platformInvoices     PlatformInvoice[]
+  platformCustomQuoteFlags PlatformCustomQuoteFlag[]
   auditLogs    AuditLog[]
 }
 
@@ -317,6 +320,7 @@ model User {
   tickets      Ticket[]
   ticketsRated Ticket[] @relation("TicketRatedBy")
   ticketComments TicketComment[]
+  platformInvoicesMarkedPaid PlatformInvoice[] @relation("PlatformInvoiceMarkedPaidBy")
   bookings      Booking[]
   visitorPasses VisitorPass[]
   gateLogs      GateLog[]
@@ -484,6 +488,13 @@ model Ticket {
   // Phase 7 analytics: set once when the ticket transitions to CLOSED (unlike
   // updatedAt, which also changes on re-rating) — enables accurate resolution time
   closedAt    DateTime?
+  // Vendor magic-link access (no vendor accounts exist): the vendor's contact
+  // email, plus the SHA-256 hash of their access token. The raw token is only
+  // ever inside the emailed link — never stored. Overwritten on reassignment
+  // (kills the previous vendor's link) and cleared when the ticket is CLOSED.
+  vendorEmail              String?
+  vendorAccessTokenHash    String?   @unique
+  vendorAccessTokenIssuedAt DateTime?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   deletedAt   DateTime?
@@ -656,4 +667,64 @@ model AuditLog {
 
   // Indexing baseline (Section 9 of PLAN.md): high traffic tables index by societyId and createdAt
   @@index([societyId, createdAt])
+}
+
+// ── Platform Billing (Phase 9, ADR 006) ────────────────────────────────────
+// Societies paying the PLATFORM a monthly fee. Deliberately a separate entity
+// from `Invoice` (Phase 2), which is residents paying their society via
+// Safepay — different payer, different recipient; never merge them.
+enum PlatformInvoiceStatus {
+  PENDING
+  PAID
+  OVERDUE
+}
+
+model PlatformInvoice {
+  id          String               @id @default(uuid())
+  societyId   String
+  society     Society              @relation(fields: [societyId], references: [id])
+  // Billing period marker "YYYY-MM". Unique per society — running the monthly
+  // job twice must never generate two invoices for the same period.
+  billingPeriod String
+  // Active unit count at generation time — stored, never recomputed later.
+  unitCountSnapshot Int
+  // Progressive calculation breakdown (band label, units, rate, subtotal) so
+  // the admin view can show exactly how the total was produced.
+  calculationBreakdown Json
+  // Total in paisa (rupees × 100) — same convention as Invoice.amount.
+  totalAmountPaisa  Int
+  dueDate     DateTime
+  status      PlatformInvoiceStatus @default(PENDING)
+  generatedAt DateTime             @default(now())
+  paidAt      DateTime?
+  // Set by the Super Admin "Mark as Paid" action — the ONLY way an invoice
+  // becomes PAID (no self-service button for Committee Admins).
+  markedPaidBySuperAdminUserId String?
+  markedPaidBySuperAdmin       User?  @relation("PlatformInvoiceMarkedPaidBy", fields: [markedPaidBySuperAdminUserId], references: [id])
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  deletedAt   DateTime?
+
+  @@unique([societyId, billingPeriod], name: "unique_platform_billing_period")
+  @@index([societyId, status])
+  @@index([status, dueDate])
+}
+
+// A society over the 500-unit auto-invoice cap (ADR 006) is never invoiced by
+// the formula — it is flagged once per period for a manual custom-quote
+// conversation instead.
+model PlatformCustomQuoteFlag {
+  id          String   @id @default(uuid())
+  societyId   String
+  society     Society  @relation(fields: [societyId], references: [id])
+  billingPeriod String // period in which the flag was raised ("YYYY-MM")
+  unitCountSnapshot Int
+  note        String?
+  resolvedAt  DateTime? // set once a Super Admin handles the quote
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@unique([societyId, billingPeriod], name: "unique_platform_quote_flag_period")
+  @@index([societyId])
 }

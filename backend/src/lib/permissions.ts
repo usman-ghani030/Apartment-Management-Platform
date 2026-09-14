@@ -24,7 +24,8 @@ export type AuthResource =
   | 'analytics'
   | 'audit_log'
   | 'staff'
-  | 'sos_alert';
+  | 'sos_alert'
+  | 'platform_billing';
 
 /**
  * Actions that can be performed on resources.
@@ -158,6 +159,12 @@ const PERMISSION_MATRIX: Record<AuthResource, Partial<Record<AuthAction, Role[]>
     create: ['SUPER_ADMIN', 'COMMITTEE_ADMIN', 'RESIDENT'],
     read: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
     update: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
+  },
+  // Phase 9: platform billing. Committee Admins read THEIR society's platform
+  // invoices; everything platform-ops (all societies, mark-as-paid, runs) is
+  // additionally gated to SUPER_ADMIN membership role inside the route.
+  platform_billing: {
+    read: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
   },
 };
 

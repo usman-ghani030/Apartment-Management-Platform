@@ -46,3 +46,10 @@ export class InMemoryRateLimiter {
 // alike) so the limit itself never reveals whether an email is registered.
 export const passwordResetEmailLimiter = new InMemoryRateLimiter(15 * 60 * 1000, 5);
 export const passwordResetIpLimiter = new InMemoryRateLimiter(15 * 60 * 1000, 20);
+
+// Vendor magic-link endpoints are public and token-only, so they get a tighter
+// leash: 60 requests per IP and 30 per token, per 15 minutes. The token space
+// (256 bits) is already far too large to guess; this just slows down attempts
+// and stops a leaked link being hammered.
+export const vendorTokenIpLimiter = new InMemoryRateLimiter(15 * 60 * 1000, 60);
+export const vendorTokenLookupLimiter = new InMemoryRateLimiter(15 * 60 * 1000, 30);

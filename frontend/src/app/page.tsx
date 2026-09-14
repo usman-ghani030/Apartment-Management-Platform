@@ -224,13 +224,14 @@ const pricingTintStyles = {
 
 // ── Pricing Card ──────────────────────────────────────────────────────────
 function PricingCard({
-  name, price, description, features, popular = false, cta, onCta, tint = 'blue',
+  name, price, priceSuffix, description, features, popular = false, cta, onCta, tint = 'blue',
 }: {
-  name: string; price: string; description: string; features: string[]; popular?: boolean; cta: string; onCta: () => void; tint?: keyof typeof pricingTintStyles;
+  name: string; price: string; priceSuffix?: string | null; description: string; features: string[]; popular?: boolean; cta: string; onCta: () => void; tint?: keyof typeof pricingTintStyles;
 }) {
   const t = pricingTintStyles[tint];
+  const suffix = priceSuffix !== undefined ? priceSuffix : price !== 'Free' ? '/month' : null;
   return (
-    <div className={`relative rounded-2xl p-8 border-2 bg-gradient-to-b transition-all duration-300 hover:-translate-y-1 hover:shadow-elevated ${
+    <div className={`relative h-full flex flex-col rounded-2xl p-8 border-2 bg-gradient-to-b transition-all duration-300 hover:-translate-y-1 hover:shadow-elevated ${
       popular
         ? `border-accent-500 ${t.bg} shadow-elevated`
         : `${t.border} ${t.bg}`
@@ -246,7 +247,7 @@ function PricingCard({
       <p className="text-body-sm text-gray-700 mb-5">{description}</p>
       <div className="mb-6">
         <span className="text-display-lg font-display text-gray-900">{price}</span>
-        {price !== 'Free' && <span className="text-body-sm text-gray-700 ml-1">/month</span>}
+        {suffix && <span className="text-body-sm text-gray-700 ml-1">{suffix}</span>}
       </div>
       <ul className="space-y-3 mb-8">
         {features.map((f, i) => (
@@ -258,7 +259,7 @@ function PricingCard({
       </ul>
       <button
         onClick={onCta}
-        className={`w-full py-2.5 rounded-lg text-body-sm font-semibold transition-all ${
+        className={`mt-auto w-full py-2.5 rounded-lg text-body-sm font-semibold transition-all ${
           popular
             ? 'bg-accent-600 hover:bg-accent-700 text-white shadow-button'
             : 'bg-gray-50 border border-gray-200 text-gray-700 hover:border-accent-300'
@@ -402,10 +403,11 @@ export default function Home() {
 
   const faqs = [
     { q: 'How long does it take to set up my society?', a: 'You can create your society and be fully operational in under 10 minutes. Adding buildings, units, and inviting residents is quick and intuitive.' },
+    { q: 'How does pricing work?', a: 'Free for societies with up to 15 units, forever. Beyond that we charge per unit per month — Rs 20/unit for units 16–50, Rs 12/unit for 51–200, and Rs 8/unit for 201–500 — calculated progressively like tax brackets, so the more you grow, the less each extra unit costs. In practice: a 50-unit society pays Rs 700/month, 100 units Rs 1,300/month, 200 units Rs 2,500/month, and 500 units Rs 4,900/month. Societies over 500 units get a custom quote. Every feature is included on every plan.' },
     { q: 'Is my data secure and isolated?', a: 'Absolutely. Every society has a fully isolated database context. Role-based access control ensures only authorized users see specific data. All connections use encryption.' },
     { q: 'Can residents pay maintenance online?', a: 'Yes! We support secure online payment integration. Residents can pay with credit or debit cards. We also support offline payment tracking for societies that prefer cash or bank transfers.' },
     { q: 'What happens when the committee changes?', a: 'We offer a one-click committee transition export. All financial records, audit logs, and documents are packaged into a downloadable archive for the new committee.' },
-    { q: 'Do you offer white-label options?', a: 'Enterprise plans include white-label options — your society name, colors, and logo, no OmniHome branding.' },
+    { q: 'Do you offer white-label options?', a: 'Yes — for larger societies (custom-quote tier), we offer white-labeling: your society name, colors, and logo, no OmniHome branding.' },
     { q: 'Is there a mobile app?', a: 'OmniHome is fully responsive and works beautifully on all devices — mobile, tablet, and desktop. A native mobile app is planned for a future release.' },
   ];
 
@@ -569,10 +571,10 @@ export default function Home() {
                     <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                   </button>
                   {authState !== 'loggedIn' && (
-                    <p className="flex items-center gap-1.5 text-caption text-gray-700 mt-3">
-                      <Check className="w-3.5 h-3.5 text-accent-500" />
-                      14-day free trial · No credit card required
-                    </p>
+                <p className="flex items-center gap-1.5 text-caption text-gray-700 mt-3">
+                  <Check className="w-3.5 h-3.5 text-accent-500" />
+                  Free for up to 15 units · No credit card required
+                </p>
                   )}
 
                   {/* Social proof */}
@@ -986,10 +988,10 @@ export default function Home() {
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-display lg:text-display-lg font-display text-gray-900">
-              Plans for every community
+              Simple pricing that grows with you
             </h2>
             <p className="text-body text-gray-700 mt-4">
-              Start free. Upgrade when you grow.
+              Free up to 15 units. After that, one monthly fee based on your unit count — the rate per unit drops as you grow. Every plan includes every feature.
             </p>
           </div>
 
@@ -999,13 +1001,13 @@ export default function Home() {
                 name="Starter"
                 tint="blue"
                 price="Free"
-                description="Perfect for small societies getting started."
+                description="For societies finding their feet."
                 features={[
-                  'Up to 50 units',
-                  'Notices & announcements',
-                  'Maintenance ticketing',
-                  'Resident directory',
-                  'Basic visitor passes',
+                  'Up to 15 units — free forever',
+                  'Every feature included',
+                  'Notices, tickets & visitor management',
+                  'Billing, invoices & amenities',
+                  'Resident directory & documents',
                   'Email support',
                 ]}
                 cta="Get started"
@@ -1014,43 +1016,38 @@ export default function Home() {
             </FadeIn>
             <FadeIn delay={120}>
               <PricingCard
-                name="Pro"
+                name="Growth"
                 tint="purple"
-                price="Rs 2,000"
-                description="For growing societies with advanced needs."
+                price="Rs 700"
+                description="For societies of 16–200 units. Example: a 50-unit society pays Rs 700/mo."
                 features={[
-                  'Up to 200 units',
-                  'Everything in Starter',
-                  'Automated billing & invoices',
-                  'JazzCash, Easypaisa & bank payments',
-                  'Amenity booking system',
-                  'Community polls & voting',
-                  'QR code visitor management',
+                  '50 units → Rs 700/mo · 100 units → Rs 1,300/mo',
+                  '200 units → Rs 2,500/mo',
+                  'First 15 units always free — you only pay for units 16+',
+                  'Per-unit rate drops as you grow: Rs 20 (16–50) → Rs 12 (51–200)',
+                  'Every feature included — nothing locked',
                   'Priority support',
                 ]}
                 popular
-                cta="Start free trial"
+                cta="Start free"
                 onCta={() => router.push('/signup')}
               />
             </FadeIn>
             <FadeIn delay={240}>
               <PricingCard
-                name="Enterprise"
+                name="Scale"
                 tint="emerald"
-                price="Rs 5,000"
-                description="For large societies and multi-community groups."
+                price="Rs 3,300"
+                description="For societies of 201–500 units. Example: a 300-unit society pays Rs 3,300/mo."
                 features={[
-                  'Unlimited units',
-                  'Everything in Pro',
-                  'Document management',
-                  'Audit trail & export',
-                  'Multi-society management',
-                  'Custom roles & permissions',
-                  'Dedicated account manager',
-                  'API access',
-                  'White-label option',
+                  '300 units → Rs 3,300/mo · 500 units → Rs 4,900/mo',
+                  'Top band: Rs 8/unit on units 201–500 — your cheapest units',
+                  'Every feature included — nothing locked',
+                  'Audit trail & committee-handover export',
+                  'Beyond 500 units: custom quote',
+                  'Dedicated support',
                 ]}
-                cta="Contact sales"
+                cta="Start free"
                 onCta={() => router.push('/signup')}
               />
             </FadeIn>
@@ -1140,14 +1137,14 @@ export default function Home() {
                   Ready to transform your community?
                 </h2>
                 <p className="text-body md:text-lg text-accent-100 max-w-lg mx-auto mb-8">
-                  Join thousands of communities already using OmniHome. Start your free trial today — no credit card required.
+                  Join thousands of communities already using OmniHome. Start free — up to 15 units, no credit card required.
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                   <button
                     onClick={() => router.push('/signup')}
                     className="group inline-flex items-center gap-2 px-7 py-3.5 bg-white hover:bg-gray-100 text-accent-700 rounded-xl text-body-sm font-semibold transition-all shadow-lg hover:shadow-xl hover:scale-[1.02]"
                   >
-                    Start free trial
+                    Start free
                     <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                   </button>
                   <button
