@@ -23,7 +23,7 @@ export async function verifyPassword(
 interface TokenPayload {
   userId: string;
   // Refresh-token version (bumped on password reset to invalidate all sessions).
-  // Absent on tokens signed before the versioning change — treated as 0.
+  // Absent on tokens signed before the versioning change - treated as 0.
   tokenVersion?: number;
 }
 
@@ -98,7 +98,7 @@ export function clearAuthCookies(res: Response): void {
 
 // ── Tenant onboarding (shared by password signup + Google signup) ────────────
 // Creates Society + first COMMITTEE_ADMIN User + Membership in one transaction.
-// This is the ONLY place a brand-new User may be created with a Membership —
+// This is the ONLY place a brand-new User may be created with a Membership -
 // Google Sign-In must never create a Membership any other way (see PLAN.md
 // and the Google-auth business rule: no membership without invite or signup).
 interface NewSocietyAdminInput {

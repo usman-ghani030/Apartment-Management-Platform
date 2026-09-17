@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { auth } from '@/lib/api';
 
-// Google Identity Services (GSI) global — loaded from accounts.google.com/gsi/client
+// Google Identity Services (GSI) global - loaded from accounts.google.com/gsi/client
 declare global {
   interface Window {
     google?: {
@@ -42,15 +42,15 @@ interface GoogleSignInButtonProps {
  * "Sign in with Google" button powered by Google Identity Services.
  *
  * The client ID comes from `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, which Next.js inlines
- * at BUILD time — so a frontend host that didn't have the variable when it built
+ * at BUILD time - so a frontend host that didn't have the variable when it built
  * (a very common Vercel setup mistake) would otherwise hide this button forever
  * with no visible clue. As a safety net we fall back to the backend's
  * `GOOGLE_CLIENT_ID` (through a public config endpoint) at runtime. OAuth client
- * IDs are public by design — browsers send them to Google — so this leaks nothing.
+ * IDs are public by design - browsers send them to Google - so this leaks nothing.
  *
  * Loads the GSI script once (shared across pages), renders the button into a div,
  * and forwards the verified ID token to `onToken`. The token is then sent to the
- * backend which verifies it server-side — the backend never trusts an unverified
+ * backend which verifies it server-side - the backend never trusts an unverified
  * token.
  */
 export default function GoogleSignInButton({ onToken, disabled }: GoogleSignInButtonProps) {
@@ -92,7 +92,7 @@ export default function GoogleSignInButton({ onToken, disabled }: GoogleSignInBu
         console.error(
           '[GoogleSignIn] No Google client ID available, so the button is hidden. Set ' +
             'NEXT_PUBLIC_GOOGLE_CLIENT_ID on the frontend host (e.g. Vercel → Settings → ' +
-            'Environment Variables, for the Production environment) and REDEPLOY — ' +
+            'Environment Variables, for the Production environment) and REDEPLOY - ' +
             'NEXT_PUBLIC_* values are baked in at build time. Also make sure ' +
             'GOOGLE_CLIENT_ID is set on the backend (this button fell back to it and ' +
             'got nothing).'

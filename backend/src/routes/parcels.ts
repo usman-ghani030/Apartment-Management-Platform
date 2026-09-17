@@ -8,6 +8,7 @@ import { logAudit } from '../lib/audit';
 import { sendNotification } from '../lib/notifications';
 import { CreateParcelSchema, UpdateParcelSchema } from '@apartment/shared';
 import type { ParcelResponse } from '@apartment/shared';
+import { getUserUnitIds } from '../lib/user-units';
 
 import multer from 'multer';
 import path from 'path';
@@ -42,15 +43,6 @@ const uploadParcelPhoto = multer({
   },
 });
 
-// ── Helper: get user's unit IDs in a society ───────────────────────────────
-async function getUserUnitIds(userId: string, societyId: string): Promise<string[]> {
-  const memberships = await prisma.membership.findMany({
-    where: { userId, societyId, status: 'ACTIVE', deletedAt: null, unitId: { not: null } },
-    select: { unitId: true },
-  });
-  return memberships.map((m) => m.unitId).filter(Boolean) as string[];
-}
-
 // ── Helper: format parcel for response ─────────────────────────────────────
 function formatParcel(p: any): ParcelResponse {
   return {
@@ -72,7 +64,7 @@ const parcelInclude = {
   collectedByUser: { select: { name: true } },
 } as const;
 
-// ── GET /api/v1/parcels — list parcels ─────────────────────────────────────
+// ── GET /api/v1/parcels - list parcels ─────────────────────────────────────
 router.get('/', requireAuth, loadMembership, async (req, res, next) => {
   try {
     const societyId = req.membership?.societyId;
@@ -104,7 +96,7 @@ router.get('/', requireAuth, loadMembership, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ── POST /api/v1/parcels — log a new parcel arrival ────────────────────────
+// ── POST /api/v1/parcels - log a new parcel arrival ────────────────────────
 router.post('/', requireAuth, loadMembership, requireRole('create', 'parcel'), async (req, res, next) => {
   try {
     const input = CreateParcelSchema.parse(req.body);
@@ -139,7 +131,7 @@ router.post('/', requireAuth, loadMembership, requireRole('create', 'parcel'), a
   } catch (err) { next(err); }
 });
 
-// ── POST /api/v1/parcels/photo — upload a parcel photo ─────────────────────
+// ── POST /api/v1/parcels/photo - upload a parcel photo ─────────────────────
 // Uploads a photo and returns a relative URL to attach to a parcel.
 router.post('/photo', requireAuth, loadMembership, requireRole('create', 'parcel'), uploadParcelPhoto.single('photo'), async (req, res, next) => {
   try {
@@ -151,10 +143,10 @@ router.post('/photo', requireAuth, loadMembership, requireRole('create', 'parcel
   } catch (err) { next(err); }
 });
 
-// ── GET /api/v1/parcels/photo/:filename — serve a parcel photo ─────────────
+// ── GET /api/v1/parcels/photo/:filename - serve a parcel photo ─────────────
 router.get('/photo/:filename', async (req, res, next) => {
   try {
-    // Only ever serve files we wrote ourselves — uploaded names are sanitized
+    // Only ever serve files we wrote ourselves - uploaded names are sanitized
     // to this charset, so anything else (path separators, "..") is a traversal attempt.
     if (!/^[a-zA-Z0-9._-]+$/.test(req.params.filename)) {
       throw new AppError(ErrorCodes.VALIDATION_ERROR, 400, 'Invalid filename');
@@ -167,7 +159,7 @@ router.get('/photo/:filename', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ── GET /api/v1/parcels/:id — view a single parcel ────────────────────────
+// ── GET /api/v1/parcels/:id - view a single parcel ────────────────────────
 router.get('/:id', requireAuth, loadMembership, async (req, res, next) => {
   try {
     const societyId = req.membership?.societyId;
@@ -190,7 +182,7 @@ router.get('/:id', requireAuth, loadMembership, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ── PATCH /api/v1/parcels/:id — update parcel (mark collected) ────────────
+// ── PATCH /api/v1/parcels/:id - update parcel (mark collected) ────────────
 router.patch('/:id', requireAuth, loadMembership, async (req, res, next) => {
   try {
     const input = UpdateParcelSchema.parse(req.body);
@@ -238,7 +230,7 @@ router.patch('/:id', requireAuth, loadMembership, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ── DELETE /api/v1/parcels/:id — soft-delete a parcel ─────────────────────
+// ── DELETE /api/v1/parcels/:id - soft-delete a parcel ─────────────────────
 router.delete('/:id', requireAuth, loadMembership, requireRole('delete', 'parcel'), async (req, res, next) => {
   try {
     const societyId = req.membership?.societyId;

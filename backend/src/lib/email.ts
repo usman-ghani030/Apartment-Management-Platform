@@ -4,7 +4,7 @@ import nodemailer, { type Transporter } from 'nodemailer';
 // Email delivery (ADR 004)
 //
 // Every feature that sends email (password reset now; notices, ticket updates,
-// dues reminders, vendor assignment later) calls `sendEmail()` below — never
+// dues reminders, vendor assignment later) calls `sendEmail()` below - never
 // Nodemailer directly. The SMTP transport details live ONLY inside
 // `GmailSmtpEmailProvider`, so swapping providers later (e.g. to a dedicated
 // transactional provider once volume demands it) is a contained change: write a
@@ -35,7 +35,7 @@ export interface GmailSmtpConfig {
  * Gmail SMTP implementation (Nodemailer).
  *
  * Note the known, accepted limitation from ADR 004: Gmail SMTP is capped at
- * ~500 sends/day and is not built for transactional volume — a deliberate,
+ * ~500 sends/day and is not built for transactional volume - a deliberate,
  * temporary choice for the current low volume.
  */
 export class GmailSmtpEmailProvider implements EmailProvider {
@@ -105,13 +105,13 @@ export function getEmailProvider(): EmailProvider | null {
   return provider;
 }
 
-/** Clear the cached provider — used by tests to isolate env-var changes. */
+/** Clear the cached provider - used by tests to isolate env-var changes. */
 export function resetEmailProvider(): void {
   provider = null;
 }
 
 /**
- * The app's single email-sending entry point — all feature code calls this.
+ * The app's single email-sending entry point - all feature code calls this.
  *
  * If Gmail credentials are missing we log and continue (dev/first-run), matching
  * the notification-stub behavior. Delivery failures propagate to the caller:
@@ -123,10 +123,10 @@ export async function sendEmail(message: EmailMessage): Promise<void> {
   if (!p) {
     if (process.env.NODE_ENV !== 'production') {
       console.log(
-        `[EMAIL] to=${message.to} subject="${message.subject}" (GMAIL_USER/GMAIL_APP_PASSWORD not set — not delivered)`
+        `[EMAIL] to=${message.to} subject="${message.subject}" (GMAIL_USER/GMAIL_APP_PASSWORD not set - not delivered)`
       );
     } else {
-      console.error('[EMAIL] GMAIL_USER/GMAIL_APP_PASSWORD are not set — email not sent');
+      console.error('[EMAIL] GMAIL_USER/GMAIL_APP_PASSWORD are not set - email not sent');
     }
     return;
   }

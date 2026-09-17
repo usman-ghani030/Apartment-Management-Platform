@@ -1,11 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Platform pricing config (ADR 006) — societies paying the platform, NOT
-// resident dues (Phase 2's Invoice system — different entity, payer, recipient;
+// Platform pricing config (ADR 006) - societies paying the platform, NOT
+// resident dues (Phase 2's Invoice system - different entity, payer, recipient;
 // never merge them).
 //
 // Pricing is PROGRESSIVE (like income tax): the first 15 units are free for
 // every society, then each unit is charged at the rate of the band it falls
-// into. Not a bracket method (one rate for the whole count) — that design was
+// into. Not a bracket method (one rate for the whole count) - that design was
 // rejected because a society with slightly more units could pay less overall
 // at every band boundary. Progressive totals are strictly increasing.
 //
@@ -29,7 +29,7 @@ export const PLATFORM_PRICING = {
     { upTo: 500, ratePerUnit: 8 },
   ] as PricingBand[],
 
-  /** Unit counts above this are never auto-invoiced — custom quote only. */
+  /** Unit counts above this are never auto-invoiced - custom quote only. */
   autoInvoiceCap: 500,
 } as const;
 
@@ -54,7 +54,7 @@ export interface ProgressiveCalculation {
 /**
  * Progressive calculation. Example (100 units):
  *   first 15 free + 35 × Rs 20 (units 16–50) + 50 × Rs 12 (units 51–100)
- *   = Rs 1,300 — NOT 100 × Rs 12.
+ *   = Rs 1,300 - NOT 100 × Rs 12.
  *
  * Strictly increasing in unitCount: adding one unit never decreases the total.
  */

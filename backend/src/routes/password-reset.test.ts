@@ -14,7 +14,7 @@ vi.mock('../lib/prisma', () => ({
   },
 }));
 
-// Mock email transport — route behavior is what we test here.
+// Mock email transport - route behavior is what we test here.
 vi.mock('../lib/email', () => ({
   sendEmail: vi.fn(),
 }));
@@ -75,7 +75,7 @@ afterAll(() => {
   vi.restoreAllMocks();
 });
 
-describe('POST /api/v1/auth/forgot-password — request endpoint', () => {
+describe('POST /api/v1/auth/forgot-password - request endpoint', () => {
   it('creates a hashed, single-use reset token and emails a reset link (200, generic message)', async () => {
     (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(passwordUser());
     (prisma.passwordResetToken.deleteMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0 });
@@ -102,7 +102,7 @@ describe('POST /api/v1/auth/forgot-password — request endpoint', () => {
     const rawToken = decodeURIComponent(urlMatch![1]);
     expect(rawToken.length).toBeGreaterThanOrEqual(32);
 
-    // Only the SHA-256 hash of the token is persisted — never the raw token
+    // Only the SHA-256 hash of the token is persisted - never the raw token
     expect(prisma.passwordResetToken.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         userId: 'u-pw',
@@ -218,7 +218,7 @@ describe('POST /api/v1/auth/forgot-password — request endpoint', () => {
   });
 });
 
-describe('POST /api/v1/auth/reset-password — token consumption', () => {
+describe('POST /api/v1/auth/reset-password - token consumption', () => {
   it('resets the password end-to-end: consumes the token, hashes the new password, bumps tokenVersion, audits', async () => {
     const rawToken = 'single-use-raw-token';
     (prisma.passwordResetToken.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -352,11 +352,11 @@ describe('POST /api/v1/auth/reset-password — token consumption', () => {
   });
 });
 
-describe('POST /api/v1/auth/refresh — tokenVersion session invalidation', () => {
+describe('POST /api/v1/auth/refresh - tokenVersion session invalidation', () => {
   const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'dev-fallback-refresh-secret';
 
   it('rejects a refresh token signed before the last password reset (401)', async () => {
-    // Token signed at tokenVersion 1, but the user is now at version 0? No —
+    // Token signed at tokenVersion 1, but the user is now at version 0? No -
     // the realistic case: user was reset (now at version 1), token signed at 0.
     const staleToken = jwt.sign({ userId: 'u-pw', tokenVersion: 0 }, REFRESH_SECRET, { expiresIn: '7d' });
     (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(passwordUser({ tokenVersion: 1 }));

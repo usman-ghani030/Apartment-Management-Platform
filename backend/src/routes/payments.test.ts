@@ -145,9 +145,11 @@ describe('recordSuccessfulPayment (atomic idempotency)', () => {
       where: { id: 'p1', status: 'pending' },
       data: expect.objectContaining({ status: 'succeeded' }),
     });
+    // The invoice records how it was paid - 'gateway' by default, 'manual_proof'
+    // when an approved proof drives this same path (ADR 008).
     expect(prisma.invoice.updateMany).toHaveBeenCalledWith({
       where: { id: 'i1', status: { not: 'PAID' } },
-      data: { status: 'PAID' },
+      data: { status: 'PAID', paymentSource: 'gateway' },
     });
   });
 

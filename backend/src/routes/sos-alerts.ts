@@ -66,7 +66,7 @@ router.post(
         },
       });
 
-      // Audit log — safety-critical, log thoroughly
+      // Audit log - safety-critical, log thoroughly
       await logAudit({
         societyId,
         actorUserId: userId,
@@ -104,7 +104,7 @@ router.post(
 
       for (const admin of adminMemberships) {
         console.log(
-          `[SOS] Notifying admin ${admin.user.name} (${admin.user.email}) — ` +
+          `[SOS] Notifying admin ${admin.user.name} (${admin.user.email}) - ` +
           `${input.category} alert from Unit ${unit.unitNumber} by ${req.user!.name}`
         );
       }
@@ -121,7 +121,7 @@ router.post(
 
       for (const guard of guardStaff) {
         console.log(
-          `[SOS] Notifying guard ${guard.name} (${guard.phone ?? guard.email ?? 'no contact'}) — ` +
+          `[SOS] Notifying guard ${guard.name} (${guard.phone ?? guard.email ?? 'no contact'}) - ` +
           `${input.category} alert from Unit ${unit.unitNumber}`
         );
       }

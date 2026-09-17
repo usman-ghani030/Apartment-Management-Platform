@@ -1,17 +1,39 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Package, CheckCircle, User, Clock } from 'lucide-react';
+import {
+  ArrowLeft, Package, Check, User as UserIcon, Clock, Home, X,
+  PackageCheck, PackageOpen,
+} from 'lucide-react';
+import { Panel, CountPill, PanelEmpty } from '@/components/ui/Panel';
+import { Field } from '@/components/ui/Field';
+import { PageSkeleton } from '@/components/ui/LoadingScreen';
 import { ApiError, apiGet, apiPatch } from '@/lib/api';
 import type { ParcelResponse } from '@apartment/shared';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
-const STATUS_STYLES: Record<string, string> = {
-  ARRIVED: 'bg-yellow-500/10 text-yellow-400',
-  COLLECTED: 'bg-green-500/10 text-green-400',
-};
+// ─────────────────────────────────────────────────────────────────────────────
+// My packages: what the gate has taken in for my unit, and what I have already
+// picked up. Same endpoints as before, rebuilt on the design system.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const photoSrc = (url: string) => (url.startsWith('http') ? url : `${API_BASE}${url}`);
+
+const shortDateTime = (iso: string) =>
+  new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+/** "2 hours ago" reads better than a timestamp for something waiting at the gate. */
+function waitLabel(iso: string) {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? 'Yesterday' : `${days} days ago`;
+}
 
 export default function ResidentParcelsPage() {
   const router = useRouter();
@@ -19,6 +41,7 @@ export default function ResidentParcelsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [collectingId, setCollectingId] = useState<string | null>(null);
 
   const fetchParcels = useCallback(async () => {
     try {
@@ -33,117 +56,160 @@ export default function ResidentParcelsPage() {
 
   const handleMarkCollected = async (id: string) => {
     setError(''); setSuccess('');
+    setCollectingId(id);
     try {
       await apiPatch(`/api/v1/parcels/${id}`, { status: 'COLLECTED' });
-      setSuccess('Parcel marked as collected');
+      setSuccess('Marked as collected. The gate can see it is with you now.');
       fetchParcels();
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
-    }
+    } finally { setCollectingId(null); }
   };
 
-  if (loading) return <div className="min-h-screen bg-white text-gray-900 flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-accent-500 border-t-transparent rounded-full" /></div>;
+  if (loading) return <PageSkeleton width="max-w-5xl" />;
 
-  const arrivedParcels = parcels.filter((p) => p.status === 'ARRIVED');
-  const collectedParcels = parcels.filter((p) => p.status === 'COLLECTED');
+  const arrived = parcels.filter((p) => p.status === 'ARRIVED');
+  const collected = parcels.filter((p) => p.status === 'COLLECTED');
 
   return (
-    <div className="min-h-screen bg-white text-gray-900">
-      <main className="max-w-4xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <button onClick={() => router.push('/dashboard/resident')} className="p-2 hover:bg-gray-50 rounded-lg transition-colors">
-            <ArrowLeft className="w-5 h-5 text-gray-700" />
-          </button>
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold text-gray-900">Packages</h1>
-            <p className="text-gray-700 text-sm">Track your parcel deliveries</p>
+    <div className="mx-auto max-w-5xl px-6 py-8">
+      <div className="mb-6 flex items-center gap-4">
+        <button
+          onClick={() => router.push('/dashboard/resident')}
+          aria-label="Back to dashboard"
+          className="rounded-xl border border-gray-200 bg-white p-2.5 text-gray-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-accent-200 hover:text-accent-700"
+        >
+          <ArrowLeft className="h-4.5 w-4.5" />
+        </button>
+        <div className="flex min-w-0 items-center gap-3.5">
+          <div className="hidden h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-accent-500 to-accent-600 text-white shadow-[0_10px_24px_-12px_rgba(37,99,235,1)] sm:flex">
+            <Package className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-display-sm font-display text-gray-900">Packages</h1>
+            <p className="text-body-sm text-gray-500">Everything the gate has taken in for your unit</p>
           </div>
         </div>
+      </div>
 
-        {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
-        {success && <div className="bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-lg px-4 py-3 mb-6">{success}</div>}
+      {error && (
+        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3.5">
+          <p className="flex-1 text-body-sm text-red-700">{error}</p>
+          <button onClick={() => setError('')} aria-label="Dismiss" className="rounded-lg p-1 text-red-400 transition-colors hover:bg-red-100 hover:text-red-700">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+      {success && (
+        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5">
+          <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" />
+          <p className="flex-1 text-body-sm text-emerald-700">{success}</p>
+          <button onClick={() => setSuccess('')} aria-label="Dismiss" className="rounded-lg p-1 text-emerald-500 transition-colors hover:bg-emerald-100 hover:text-emerald-700">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
-        {/* Awaiting Collection */}
-        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Package className="w-5 h-5 text-yellow-400" />
-          Awaiting Collection
-          {arrivedParcels.length > 0 && (
-            <span className="text-xs font-medium bg-yellow-500/10 text-yellow-400 px-2 py-0.5 rounded-full">{arrivedParcels.length}</span>
-          )}
-        </h2>
-
-        {arrivedParcels.length === 0 ? (
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-8 text-center mb-8">
-            <Package className="w-10 h-10 text-gray-700 mx-auto mb-3" />
-            <p className="text-gray-700 text-sm">No packages waiting</p>
-            <p className="text-gray-700 text-xs mt-1">When a parcel arrives, it will appear here</p>
-          </div>
+      {/* ── Awaiting collection ─────────────────────────────────────── */}
+      <Panel
+        icon={PackageOpen}
+        title="Awaiting collection"
+        hint={arrived.length === 0 ? 'Nothing is waiting for you' : 'Collect from the gate, then mark it here'}
+        meta={<CountPill tone={arrived.length === 0 ? 'neutral' : 'accent'}>{arrived.length}</CountPill>}
+      >
+        {arrived.length === 0 ? (
+          <PanelEmpty
+            icon={Package}
+            title="No packages waiting"
+            description="When the gate logs a parcel for your unit, it shows up here with a photo and the time it arrived."
+          />
         ) : (
-          <div className="space-y-3 mb-8">
-            {arrivedParcels.map((p) => (
-              <div key={p.id} className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 border-l-4 border-l-yellow-400">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${STATUS_STYLES[p.status]}`}>ARRIVED</span>
-                      <span className="text-sm font-semibold text-gray-900">{p.description}</span>
+          <ul className="divide-y divide-gray-100">
+            {arrived.map((p) => (
+              <li key={p.id} className="relative">
+                <span className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400" aria-hidden="true" />
+
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-4 px-5 py-4 pl-6">
+                  {p.photoUrl ? (
+                    <a
+                      href={photoSrc(p.photoUrl)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group block h-16 w-16 flex-shrink-0 overflow-hidden rounded-2xl border border-gray-200/80 bg-gray-50"
+                      title="View parcel photo"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={photoSrc(p.photoUrl)}
+                        alt={`Parcel ${p.description}`}
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      />
+                    </a>
+                  ) : (
+                    <span className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl bg-accent-50 text-accent-600 ring-1 ring-accent-100">
+                      <Package className="h-6 w-6" />
+                    </span>
+                  )}
+
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-body font-semibold text-gray-900">{p.description}</h3>
+                    <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3.5 sm:grid-cols-3">
+                      <Field label="Arrived" hint={shortDateTime(p.createdAt)}>{waitLabel(p.createdAt)}</Field>
+                      <Field label="Unit">
+                        <span className="inline-flex items-center gap-1.5">
+                          <Home className="h-3.5 w-3.5 text-gray-400" /> {p.unitNumber}
+                        </span>
+                      </Field>
+                      <Field label="Logged by">
+                        <span className="inline-flex items-center gap-1.5">
+                          <UserIcon className="h-3.5 w-3.5 text-gray-400" /> {p.loggedByUserName}
+                        </span>
+                      </Field>
                     </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-700 mt-1">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" /> Arrived {new Date(p.createdAt).toLocaleString()}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <User className="w-3 h-3" /> Logged by: {p.loggedByUserName}
-                      </span>
-                    </div>
-                    {p.photoUrl && (
-                      <a
-                        href={p.photoUrl.startsWith('http') ? p.photoUrl : `${API_BASE}${p.photoUrl}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block w-16 h-16 rounded-lg overflow-hidden bg-gray-50 hover:opacity-90 transition-opacity mt-2"
-                        title="View parcel photo"
-                      >
-                        <img src={p.photoUrl.startsWith('http') ? p.photoUrl : `${API_BASE}${p.photoUrl}`} alt={`Parcel ${p.description}`} className="w-full h-full object-cover" />
-                      </a>
-                    )}
                   </div>
+
                   <button
                     onClick={() => handleMarkCollected(p.id)}
-                    className="flex items-center gap-1.5 text-sm bg-green-600 hover:bg-green-500 text-white rounded-lg px-4 py-2 font-medium transition-all"
+                    disabled={collectingId === p.id}
+                    className="inline-flex flex-shrink-0 items-center gap-2 rounded-xl bg-accent-600 px-4 py-2.5 text-body-sm font-semibold text-white shadow-[0_8px_20px_-12px_rgba(37,99,235,1)] transition-all hover:-translate-y-0.5 hover:bg-accent-700 disabled:opacity-60"
                   >
-                    <CheckCircle className="w-4 h-4" /> Collected
+                    <Check className="h-4 w-4" />
+                    {collectingId === p.id ? 'Marking...' : 'Mark collected'}
                   </button>
                 </div>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
+      </Panel>
 
-        {/* Collection History */}
-        {collectedParcels.length > 0 && (
-          <>
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-400" />
-              Collection History
-            </h2>
-            <div className="space-y-2">
-              {collectedParcels.map((p) => (
-                <div key={p.id} className="bg-white border border-gray-200 rounded-xl shadow-sm p-3 opacity-60">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-500/10 text-green-400">COLLECTED</span>
-                    <span className="text-xs text-gray-700">{p.description}</span>
-                    <span className="text-[10px] text-gray-700 ml-auto">
-                      {new Date(p.updatedAt).toLocaleDateString()} by {p.collectedByUserName || p.loggedByUserName}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </main>
+      {/* ── Collection history ──────────────────────────────────────── */}
+      {collected.length > 0 && (
+        <Panel
+          icon={PackageCheck}
+          title="Collection history"
+          hint="Parcels you have already taken in"
+          meta={<CountPill tone="neutral">{collected.length}</CountPill>}
+          className="mt-6"
+        >
+          <ul className="divide-y divide-gray-100">
+            {collected.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5">
+                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                  <Check className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1 truncate text-body-sm font-medium text-gray-700">{p.description}</span>
+                <span className="inline-flex items-center gap-1.5 text-caption-xs text-gray-400">
+                  <Clock className="h-3 w-3" /> {shortDateTime(p.updatedAt)}
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-caption-xs text-gray-400">
+                  <UserIcon className="h-3 w-3" /> {p.collectedByUserName || p.loggedByUserName}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import type { Prisma } from '@prisma/client';
 /**
  * Tenant-scoped wrapper around Prisma operations.
  * Every query automatically filters by societyId to prevent
- * cross-tenant data leaks (non-negotiable — PLAN.md §4.1).
+ * cross-tenant data leaks (non-negotiable - PLAN.md §4.1).
  *
  * Soft-delete entities: all read operations exclude deleted records
  * (`deletedAt: null`) by default.

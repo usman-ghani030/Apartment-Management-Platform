@@ -25,7 +25,7 @@ describe('PATCH /api/v1/settings', () => {
       .patch('/api/v1/settings')
       .set('x-access-token', 'invalid-token')
       .send({ dueReminderDays: 0 });
-    // Either 401 (invalid token) or 400 (validation) — both acceptable
+    // Either 401 (invalid token) or 400 (validation) - both acceptable
     expect([401, 400]).toContain(res.status);
   });
 });

@@ -58,7 +58,7 @@ afterAll(() => {
   vi.restoreAllMocks();
 });
 
-describe('PATCH /api/v1/tickets/:id — vendor rating rules', () => {
+describe('PATCH /api/v1/tickets/:id - vendor rating rules', () => {
   it('rejects a rating when the ticket is not being closed (400)', async () => {
     mockAuth('u-admin', adminMembership);
     (prisma.ticket.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({

@@ -1,0 +1,6 @@
+Building Name,Unit Number,Floor,Bedroom Type,Primary Contact Name,Primary Contact Email,Primary Contact Phone
+Tower A,101,1,TWO_BED,John Smith,john@example.com,+92 300 1234567
+Tower A,102,1,ONE_BED,,
+Tower A,201,2,THREE_BED,Jane Doe,jane@example.com,
+Tower B,A-101,1,STUDIO,,
+Tower B,A-102,1,FOUR_PLUS_BED,Ali Khan,ali@example.com,

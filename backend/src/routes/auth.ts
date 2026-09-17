@@ -45,7 +45,7 @@ interface OutboundEmail {
 
 /**
  * Send through the EmailProvider (ADR 004) and translate a delivery failure into
- * a 502 EMAIL_SEND_FAILED — a caller must never receive a "check your inbox"
+ * a 502 EMAIL_SEND_FAILED - a caller must never receive a "check your inbox"
  * success for an email that failed to leave the server. The provider scrubs SMTP
  * credentials from its error message, so the log line is safe.
  */
@@ -67,7 +67,7 @@ async function deliverEmail(to: string, email: OutboundEmail, kind: string): Pro
 
 // ── POST /api/v1/auth/signup ────────────────────────────────────────────────
 // Creates a Society + first COMMITTEE_ADMIN User + Membership in one transaction.
-// This is tenant onboarding — the entry point for every new customer.
+// This is tenant onboarding - the entry point for every new customer.
 router.post('/signup', async (req, res, next) => {
   try {
     const input = SignupSchema.parse(req.body);
@@ -87,7 +87,7 @@ router.post('/signup', async (req, res, next) => {
     const passwordHash = await hashPassword(input.password);
 
     // Use a transaction to create Society + User + Membership atomically
-    // (shared with Google Sign-Up — the only way a brand-new User may get a
+    // (shared with Google Sign-Up - the only way a brand-new User may get a
     // Membership is this signup flow or an admin invite)
     const result = await createSocietyWithFirstAdmin({
       email: input.email,
@@ -143,7 +143,7 @@ router.post('/login', async (req, res, next) => {
       throw new AppError(ErrorCodes.INVALID_CREDENTIALS, 401, 'Invalid email or password');
     }
 
-    // Google-only accounts have no password — they can only sign in via Google
+    // Google-only accounts have no password - they can only sign in via Google
     if (!user.passwordHash) {
       throw new AppError(ErrorCodes.INVALID_CREDENTIALS, 401, 'Invalid email or password');
     }
@@ -210,7 +210,7 @@ router.get('/google/config', (_req, res) => {
 // server-side (signature, audience, expiry) and never trust an unverified token.
 //   mode='signin' → link the Google account to an existing User by verified
 //                   email + log in. Unknown email → 401, NO account is created
-//                   (Google auth must never self-grant access — a Membership
+//                   (Google auth must never self-grant access - a Membership
 //                   only ever comes from the signup flow or an admin invite).
 //   mode='signup' → tenant onboarding, exactly like POST /signup: creates a
 //                   Society + first COMMITTEE_ADMIN User + Membership in one
@@ -219,7 +219,7 @@ router.post('/google', async (req, res, next) => {
   try {
     const input = GoogleAuthSchema.parse(req.body);
 
-    // Google has already verified email ownership — that is what makes linking
+    // Google has already verified email ownership - that is what makes linking
     // a Google account to an existing email-based User safe.
     const profile = await verifyGoogleIdToken(input.idToken);
     if (!profile.email || !profile.emailVerified) {
@@ -232,7 +232,7 @@ router.post('/google', async (req, res, next) => {
     const email = profile.email.toLowerCase();
 
     if (input.mode === 'signup') {
-      // Tenant onboarding — requires the same society fields as POST /signup
+      // Tenant onboarding - requires the same society fields as POST /signup
       if (!input.societyName || !input.societySlug) {
         throw new AppError(
           ErrorCodes.VALIDATION_ERROR,
@@ -296,7 +296,7 @@ router.post('/google', async (req, res, next) => {
     }
 
     // ── mode === 'signin' ──
-    // Only link/log in an EXISTING user — never create a User or Membership here.
+    // Only link/log in an EXISTING user - never create a User or Membership here.
     const user = await prisma.user.findFirst({
       where: { email: { equals: email, mode: 'insensitive' } },
     });
@@ -318,7 +318,7 @@ router.post('/google', async (req, res, next) => {
     }
 
     // Link the Google account to the existing user (safe because Google verified
-    // email ownership). Mark emailVerified — Google already proved it.
+    // email ownership). Mark emailVerified - Google already proved it.
     const linked = user.googleId ? false : true;
     if (linked) {
       await prisma.user.update({
@@ -333,7 +333,7 @@ router.post('/google', async (req, res, next) => {
       include: { society: true },
     });
 
-    // Account linking is a security-relevant mutation — record it per active
+    // Account linking is a security-relevant mutation - record it per active
     // society. (Password login writes no audit entry; this is the same policy.)
     if (linked) {
       for (const m of memberships) {
@@ -383,11 +383,11 @@ router.post('/google', async (req, res, next) => {
 });
 
 // ── POST /api/v1/auth/forgot-password ──────────────────────────────────────
-// Requests a password reset link (delivered through the EmailProvider — ADR
+// Requests a password reset link (delivered through the EmailProvider - ADR
 // 004, Gmail SMTP via Nodemailer). Behavior by account:
 //   • password-having account → single-use, time-limited reset link via email
 //   • Google-only account (passwordHash = null) → informational email pointing
-//     at Google Sign-In — no reset link, no token, no password is ever created
+//     at Google Sign-In - no reset link, no token, no password is ever created
 //   • unknown email → 404 EMAIL_NOT_FOUND (nothing created or sent)
 // Rate-limited per email and per IP.
 //
@@ -413,7 +413,7 @@ router.post('/forgot-password', async (req, res, next) => {
 
     const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
 
-    // Google-only account: no password exists to reset — explain and point at
+    // Google-only account: no password exists to reset - explain and point at
     // Google Sign-In. Never issue a reset token for a passwordless account.
     if (!user.passwordHash) {
       const loginUrl = `${frontendUrl}/login`;
@@ -428,7 +428,7 @@ router.post('/forgot-password', async (req, res, next) => {
       where: { userId: user.id, expiresAt: { lt: new Date() } },
     });
 
-    // Single-use, time-limited token — only the SHA-256 hash is stored.
+    // Single-use, time-limited token - only the SHA-256 hash is stored.
     const { raw, hash } = generateResetToken();
     await prisma.passwordResetToken.create({
       data: {
@@ -498,7 +498,7 @@ router.post('/reset-password', async (req, res, next) => {
       where: { userId: resetToken.userId, usedAt: null },
     });
 
-    // Audit per active society — never the password itself, only that a reset
+    // Audit per active society - never the password itself, only that a reset
     // occurred (same policy as Google account linking; PLAN.md §4.4).
     const memberships = await prisma.membership.findMany({
       where: { userId: resetToken.userId, status: 'ACTIVE', deletedAt: null },
@@ -583,7 +583,7 @@ router.post('/refresh', async (req, res, next) => {
 
     // Refresh tokens are stateless JWTs, so session invalidation is enforced
     // via a version claim: a token signed before the last password reset (or
-    // before tokenVersion existed — treated as 0) no longer matches.
+    // before tokenVersion existed - treated as 0) no longer matches.
     if ((payload.tokenVersion ?? 0) !== user.tokenVersion) {
       throw new AppError(ErrorCodes.TOKEN_INVALID, 401, 'Session expired. Please sign in again.');
     }

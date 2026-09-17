@@ -28,14 +28,14 @@ import type {
 } from '@apartment/shared';
 
 /**
- * Platform Billing (Phase 9, ADR 006) — societies paying the PLATFORM.
+ * Platform Billing (Phase 9, ADR 006) - societies paying the PLATFORM.
  * Distinct from resident dues (/api/v1/invoices, Phase 2, Safepay).
  *
  * Authorization model:
  * - Committee Admins see ONLY their own society's platform invoices (read-only).
  * - Everything platform-ops (all societies, mark-paid, generation runs,
  *   custom-quote list) requires the caller to hold a SUPER_ADMIN membership
- *   role — checked server-side on every route, never trusted from the client.
+ *   role - checked server-side on every route, never trusted from the client.
  */
 
 const router = Router();
@@ -138,7 +138,7 @@ router.get(
 
 // ── GET /api/v1/platform-billing ────────────────────────────────────────────
 // Committee Admin (and Super Admin) view: their OWN society's platform invoice
-// history. Read-only — there is no self-service "I paid" action anywhere.
+// history. Read-only - there is no self-service "I paid" action anywhere.
 router.get(
   '/',
   requireAuth,
@@ -228,7 +228,7 @@ router.get(
 );
 
 // ── POST /api/v1/platform-billing/run-generation (SUPER_ADMIN only) ──────────
-// Manual trigger for the monthly job — supports dryRun for first-run testing
+// Manual trigger for the monthly job - supports dryRun for first-run testing
 // so no incorrect invoices are generated for real societies on day one.
 const RunGenerationSchema = z.object({
   dryRun: z.boolean().optional().default(false),

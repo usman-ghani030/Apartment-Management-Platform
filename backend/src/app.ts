@@ -110,11 +110,24 @@ app.use('/api/v1/analytics', analyticsRoutes);
 import importRoutes from './routes/import-csv';
 app.use('/api/v1/import', importRoutes);
 
-// ── Vendor Portal Routes (public, token-secured — no login) ────────────────
+// ── Vendor Directory Routes (admin: search/create for ticket assignment) ───
+import vendorRoutes from './routes/vendors';
+app.use('/api/v1/vendors', vendorRoutes);
+
+// ── Manual Payment Proof Routes (ADR 008: review queue, approve, reject) ───
+// Resident submission lives on POST /api/v1/invoices/:id/payment-proof.
+import paymentProofRoutes from './routes/payment-proofs';
+app.use('/api/v1/payment-proofs', paymentProofRoutes);
+
+// ── Signed Upload Routes (ADR 002: direct-to-Cloudinary with server signing) ─
+import uploadRoutes from './routes/uploads';
+app.use('/api/v1/uploads', uploadRoutes);
+
+// ── Vendor Portal Routes (public, token-secured - no login) ────────────────
 import vendorPortalRoutes from './routes/vendor-portal';
 app.use('/api/v1/vendor', vendorPortalRoutes);
 
-// ── Platform Billing Routes (Phase 9 — societies paying the platform) ───────
+// ── Platform Billing Routes (Phase 9 - societies paying the platform) ───────
 import platformBillingRoutes from './routes/platform-billing';
 app.use('/api/v1/platform-billing', platformBillingRoutes);
 

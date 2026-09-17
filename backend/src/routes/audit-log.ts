@@ -8,7 +8,7 @@ import type { AuditLogResponse } from '@apartment/shared';
 
 const router = Router();
 
-// ── GET /api/v1/audit-logs — list audit logs with search/filter ───────────
+// ── GET /api/v1/audit-logs - list audit logs with search/filter ───────────
 router.get('/', requireAuth, loadMembership, requireRole('read', 'audit_log'), async (req, res, next) => {
   try {
     const societyId = req.membership!.societyId;
@@ -74,7 +74,7 @@ router.get('/', requireAuth, loadMembership, requireRole('read', 'audit_log'), a
   } catch (err) { next(err); }
 });
 
-// ── GET /api/v1/audit-logs/entity/:entityType/:entityId — get logs for specific entity
+// ── GET /api/v1/audit-logs/entity/:entityType/:entityId - get logs for specific entity
 router.get('/entity/:entityType/:entityId', requireAuth, loadMembership, async (req, res, next) => {
   try {
     const societyId = req.membership!.societyId;
@@ -101,7 +101,7 @@ router.get('/entity/:entityType/:entityId', requireAuth, loadMembership, async (
   } catch (err) { next(err); }
 });
 
-// ── GET /api/v1/audit-logs/export — export audit logs as JSON for committee transition
+// ── GET /api/v1/audit-logs/export - export audit logs as JSON for committee transition
 router.get('/export', requireAuth, loadMembership, requireRole('read', 'audit_log'), async (req, res, next) => {
   try {
     const societyId = req.membership!.societyId;

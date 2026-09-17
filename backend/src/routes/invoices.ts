@@ -6,31 +6,60 @@ import { sendSuccess } from '../lib/response';
 import { requireAuth, loadMembership } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { logAudit } from '../lib/audit';
+import { sendNotification } from '../lib/notifications';
 import { getPaymentProvider } from '../lib/payment-provider';
 import { recordSuccessfulPayment } from '../lib/payment-processing';
-import { CreateInvoiceSchema, UpdateInvoiceSchema, DisputeInvoiceSchema } from '@apartment/shared';
+import { formatProofSummary, paymentProofInclude } from '../lib/payment-proofs';
+import { getUserUnitIds } from '../lib/user-units';
+import {
+  CreateInvoiceSchema,
+  UpdateInvoiceSchema,
+  DisputeInvoiceSchema,
+  CreatePaymentProofSchema,
+  UPLOAD_PURPOSE_CONFIG,
+  storageFolder,
+} from '@apartment/shared';
+import { getStorageProvider } from '../lib/storage';
 import type { InvoiceResponse, PaymentResponse } from '@apartment/shared';
 
 const router = Router();
 
+// Payment-proof screenshots are uploaded straight to Cloudinary from the browser
+// with a signature for this invoice's folder (ADR 002), then referenced here by
+// public id. Proof screenshots are financial evidence, so unlike ticket photos
+// the stored Cloudinary URL is never handed to the browser - they are read only
+// through the access-controlled GET /api/v1/payment-proofs/:id/screenshot route.
+
 const invoiceInclude = {
   unit: { select: { unitNumber: true } },
   payments: { select: { amount: true, status: true, paidAt: true } },
+  // The latest proof drives the resident's "Verification pending" / rejected
+  // states on the invoice card (newest first; soft-deleted rows excluded).
+  paymentProofs: {
+    where: { deletedAt: null },
+    orderBy: { createdAt: 'desc' },
+    take: 1,
+    select: {
+      id: true,
+      societyId: true,
+      invoiceId: true,
+      residentId: true,
+      claimedAmount: true,
+      paymentMethod: true,
+      transactionReference: true,
+      status: true,
+      reviewedById: true,
+      reviewedAt: true,
+      rejectionReason: true,
+      createdAt: true,
+      updatedAt: true,
+      resident: { select: { name: true } },
+      reviewedBy: { select: { name: true } },
+    },
+  },
 } as const;
 
 type InvoiceWithUnit = Prisma.InvoiceGetPayload<{ include: typeof invoiceInclude }>;
-
-/**
- * Get the unit IDs that a user belongs to in a given society.
- * Returns empty array if the user has no unit assignments.
- */
-async function getUserUnitIds(userId: string, societyId: string): Promise<string[]> {
-  const memberships = await prisma.membership.findMany({
-    where: { userId, societyId, status: 'ACTIVE', deletedAt: null, unitId: { not: null } },
-    select: { unitId: true },
-  });
-  return memberships.map((m) => m.unitId).filter(Boolean) as string[];
-}
 
 function formatInvoice(i: InvoiceWithUnit): InvoiceResponse {
   const successfulPayments = i.payments.filter((p) => p.status === 'succeeded');
@@ -47,6 +76,25 @@ function formatInvoice(i: InvoiceWithUnit): InvoiceResponse {
     createdAt: i.createdAt.toISOString(), updatedAt: i.updatedAt.toISOString(),
     paidAmount: paidAmount > 0 ? paidAmount : undefined,
     paidAt: lastPaid?.toISOString() ?? null,
+    paymentSource: (i.paymentSource as InvoiceResponse['paymentSource']) ?? null,
+    // The proof summary carries its own invoice context (needed for the mismatch
+    // flag on the admin side); on the invoice response only the summary fields
+    // are used, so the invoice is passed straight through.
+    paymentProof: i.paymentProofs?.[0]
+      ? formatProofSummary({
+          ...i.paymentProofs[0],
+          invoice: {
+            id: i.id,
+            invoiceNumber: i.invoiceNumber,
+            title: i.title,
+            amount: i.amount,
+            status: i.status,
+            unitId: i.unitId,
+            unit: i.unit,
+            payments: i.payments,
+          },
+        })
+      : null,
   };
 }
 
@@ -77,7 +125,7 @@ router.post('/', requireAuth, loadMembership, requireRole('create', 'invoice'), 
         periodStart: input.periodStart ? new Date(input.periodStart) : null,
         periodEnd: input.periodEnd ? new Date(input.periodEnd) : null,
       },
-      include: { unit: { select: { unitNumber: true } }, payments: { select: { amount: true, status: true, paidAt: true } } },
+      include: invoiceInclude,
     });
 
     await logAudit({
@@ -122,7 +170,7 @@ router.get('/', requireAuth, loadMembership, async (req, res, next) => {
 
     const invoices = await prisma.invoice.findMany({
       where, orderBy: { createdAt: 'desc' },
-      include: { unit: { select: { unitNumber: true } }, payments: { select: { amount: true, status: true, paidAt: true } } },
+      include: invoiceInclude,
     });
 
     sendSuccess(res, invoices.map((i) => formatInvoice(i as InvoiceWithUnit)));
@@ -136,7 +184,7 @@ router.delete('/:id', requireAuth, loadMembership, requireRole('delete', 'invoic
 
     const existing = await prisma.invoice.findFirst({ where: { id: req.params.id, societyId, deletedAt: null } });
     if (!existing) throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Invoice not found');
-    if (existing.status === 'PAID') throw new AppError(ErrorCodes.CONFLICT, 409, 'Cannot delete a paid invoice — mark it as CANCELLED instead');
+    if (existing.status === 'PAID') throw new AppError(ErrorCodes.CONFLICT, 409, 'Cannot delete a paid invoice - mark it as CANCELLED instead');
 
     await prisma.invoice.update({
       where: { id: req.params.id },
@@ -164,7 +212,7 @@ router.get('/:id', requireAuth, loadMembership, async (req, res, next) => {
 
     const invoice = await prisma.invoice.findFirst({
       where: { id: req.params.id, societyId, deletedAt: null },
-      include: { unit: { select: { unitNumber: true } }, payments: { select: { amount: true, status: true, paidAt: true } } },
+      include: invoiceInclude,
     });
     if (!invoice) throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Invoice not found');
 
@@ -199,7 +247,7 @@ router.patch('/:id', requireAuth, loadMembership, requireRole('update', 'invoice
     const invoice = await prisma.invoice.update({
       where: { id: req.params.id },
       data: updateData,
-      include: { unit: { select: { unitNumber: true } }, payments: { select: { amount: true, status: true, paidAt: true } } },
+      include: invoiceInclude,
     });
 
     await logAudit({
@@ -233,7 +281,7 @@ router.post('/:id/dispute', requireAuth, loadMembership, async (req, res, next) 
     const updated = await prisma.invoice.update({
       where: { id: req.params.id },
       data: { status: 'DISPUTED' },
-      include: { unit: { select: { unitNumber: true } }, payments: { select: { amount: true, status: true, paidAt: true } } },
+      include: invoiceInclude,
     });
 
     await logAudit({
@@ -256,7 +304,7 @@ router.post('/:id/pay', requireAuth, loadMembership, async (req, res, next) => {
 
     const invoice = await prisma.invoice.findFirst({
       where: { id: req.params.id, societyId, deletedAt: null },
-      include: { unit: { select: { unitNumber: true } }, payments: { select: { amount: true, status: true, paidAt: true } } },
+      include: invoiceInclude,
     });
     if (!invoice) throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Invoice not found');
 
@@ -270,7 +318,7 @@ router.post('/:id/pay', requireAuth, loadMembership, async (req, res, next) => {
 
     const provider = getPaymentProvider();
     if (!provider.isConfigured()) {
-      // No payment gateway configured — create an offline payment record (for dev/testing)
+      // No payment gateway configured - create an offline payment record (for dev/testing)
       const payment = await prisma.payment.create({
         data: { invoiceId: invoice.id, societyId, amount: invoice.amount, currency: 'PKR', status: 'succeeded', paidAt: new Date() },
       });
@@ -292,7 +340,7 @@ router.post('/:id/pay', requireAuth, loadMembership, async (req, res, next) => {
       throw new AppError(ErrorCodes.CONFLICT, 409, 'A payment for this invoice is already in progress. Wait for it to finish or contact support before trying again.');
     }
 
-    // Payment gateway is configured — create a Safepay hosted-checkout session
+    // Payment gateway is configured - create a Safepay hosted-checkout session
     const frontendBase = process.env.FRONTEND_URL || 'http://localhost:3000';
     const session = await provider.createCheckoutSession({
       invoiceId: invoice.id,
@@ -314,7 +362,7 @@ router.post('/:id/pay', requireAuth, loadMembership, async (req, res, next) => {
       // The tracker already exists at Safepay; without a matching row the webhook
       // cannot reconcile it. Log loudly so operations can resolve the orphan.
       console.error(`[Safepay] Failed to persist payment row for invoice ${invoice.id}:`, err instanceof Error ? err.message : err);
-      throw new AppError(ErrorCodes.INTERNAL_ERROR, 500, 'Payment could not be started — please try again');
+      throw new AppError(ErrorCodes.INTERNAL_ERROR, 500, 'Payment could not be started - please try again');
     }
 
     sendSuccess(res, { url: session.url });
@@ -370,6 +418,145 @@ router.post('/:id/verify-payment', requireAuth, loadMembership, async (req, res,
     sendSuccess(res, { status });
   } catch (err) { next(err); }
 });
+
+// ── POST /api/v1/invoices/:id/payment-proof ────────────────────────────────
+// Manual payment verification (ADR 008). The resident uploads a screenshot of an
+// off-platform payment against their own unit's unpaid invoice; an admin reviews
+// it. Deliberately separate from the Safepay path above - and not a
+// PaymentProvider implementation (ADR 008).
+router.post(
+  '/:id/payment-proof',
+  requireAuth,
+  loadMembership,
+  requireRole('create', 'payment_proof'),
+  async (req, res, next) => {
+    try {
+      const societyId = req.membership!.societyId;
+      const input = CreatePaymentProofSchema.parse(req.body);
+
+      const invoice = await prisma.invoice.findFirst({
+    where: { id: req.params.id, societyId, deletedAt: null },
+    include: { unit: { select: { unitNumber: true } } },
+  });
+  if (!invoice) throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Invoice not found');
+
+      // Same ownership scoping the pay/dispute routes use: a resident may only
+      // act on invoices for a unit they actually belong to. Admins may submit on
+      // a resident's behalf (they can already see every unit).
+      const role = req.membership!.role;
+      const isAdmin = role === 'COMMITTEE_ADMIN' || role === 'SUPER_ADMIN';
+      if (!isAdmin) {
+        const userUnitIds = await getUserUnitIds(req.user!.id, societyId);
+        if (!userUnitIds.includes(invoice.unitId)) {
+          throw new AppError(ErrorCodes.FORBIDDEN, 403, 'You can only submit proof for your own invoices');
+        }
+      }
+
+      if (invoice.status === 'PAID') {
+        throw new AppError(ErrorCodes.CONFLICT, 409, 'This invoice is already paid');
+      }
+      if (invoice.status === 'CANCELLED') {
+        throw new AppError(ErrorCodes.CONFLICT, 409, 'This invoice was cancelled');
+      }
+
+      // One proof at a time: stacking pending proofs on one invoice would mean
+      // two admins could approve the same payment twice.
+      const pending = await prisma.paymentProof.findFirst({
+        where: { invoiceId: invoice.id, societyId, status: 'PENDING', deletedAt: null },
+      });
+      if (pending) {
+        throw new AppError(
+          ErrorCodes.CONFLICT,
+          409,
+          'A payment proof for this invoice is already awaiting verification.'
+        );
+      }
+
+      // The screenshot already sits in Cloudinary (uploaded with a signature for
+      // this invoice's folder). Resolving the public id through the provider is
+      // what proves it is real and belongs under this society/invoice - the
+      // client never gets to assert a URL of its own choosing.
+      const cover = getStorageProvider();
+      const asset = await cover.confirmUpload({
+        publicId: input.publicId,
+        expectedFolder: storageFolder(
+          societyId,
+          UPLOAD_PURPOSE_CONFIG['payment-proof'].resourceType,
+          invoice.id
+        ),
+        allowedFormats: UPLOAD_PURPOSE_CONFIG['payment-proof'].allowedFormats,
+        maxFileSizeBytes: UPLOAD_PURPOSE_CONFIG['payment-proof'].maxFileSizeBytes,
+      });
+
+      const proof = await prisma.paymentProof.create({
+        data: {
+          societyId,
+          invoiceId: invoice.id,
+          residentId: req.user!.id,
+          // The Cloudinary public id, not a URL: every read goes through the
+          // access-controlled screenshot route (see lib/payment-proofs.ts).
+          screenshotUrl: asset.publicId,
+          claimedAmount: input.claimedAmount,
+          paymentMethod: input.paymentMethod,
+          transactionReference: input.transactionReference?.trim() || null,
+          status: 'PENDING',
+        },
+        include: paymentProofInclude,
+      });
+
+      await logAudit({
+        societyId,
+        actorUserId: req.user!.id,
+        action: 'PAYMENT_PROOF_SUBMITTED',
+        entityType: 'payment_proof',
+        entityId: proof.id,
+        after: {
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          claimedAmount: proof.claimedAmount,
+          paymentMethod: proof.paymentMethod,
+          transactionReference: proof.transactionReference,
+        },
+      });
+
+      await sendNotification({
+        type: 'PAYMENT_PROOF_SUBMITTED',
+        proofId: proof.id,
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        societyId,
+        unitNumber: invoice.unit.unitNumber,
+        residentName: req.user!.name,
+        claimedAmount: proof.claimedAmount,
+        paymentMethod: proof.paymentMethod,
+      });
+
+      // Alert the society's admins the same way SOS alerts do (the existing
+      // notification pattern - console + audit today, email/push when the
+      // provider lands). No new notification mechanism.
+      const adminMemberships = await prisma.membership.findMany({
+        where: {
+          societyId,
+          role: { in: ['COMMITTEE_ADMIN', 'SUPER_ADMIN'] },
+          status: 'ACTIVE',
+          deletedAt: null,
+        },
+        include: { user: { select: { name: true, email: true } } },
+      });
+      for (const admin of adminMemberships) {
+        console.log(
+          `[PaymentProof] Notifying admin ${admin.user.name} (${admin.user.email}) - ` +
+            `proof awaiting verification on ${invoice.invoiceNumber} ` +
+            `(Unit ${invoice.unit.unitNumber}) for ${proof.claimedAmount} paisa`
+        );
+      }
+
+      sendSuccess(res, formatProofSummary(proof), 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 // ── GET /api/v1/invoices/payments/history ──────────────────────────────────
 router.get('/payments/history', requireAuth, loadMembership, async (req, res, next) => {

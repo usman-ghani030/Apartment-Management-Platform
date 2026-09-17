@@ -56,7 +56,7 @@ afterAll(() => {
   vi.restoreAllMocks();
 });
 
-describe('validation hardening — auth schemas', () => {
+describe('validation hardening - auth schemas', () => {
   it('rejects a signup password longer than 128 characters (400)', async () => {
     const res = await request(app).post('/api/v1/auth/signup').send({
       email: 'a@b.com',
@@ -82,7 +82,7 @@ describe('validation hardening — auth schemas', () => {
   });
 });
 
-describe('validation hardening — notices', () => {
+describe('validation hardening - notices', () => {
   it('rejects notice content over 10,000 characters (400, no DB write)', async () => {
     mockAuth('u-admin', adminMembership);
     const res = await request(app)
@@ -105,7 +105,7 @@ describe('validation hardening — notices', () => {
   });
 });
 
-describe('validation hardening — tickets & comments', () => {
+describe('validation hardening - tickets & comments', () => {
   it('rejects a ticket description over 5,000 characters (400)', async () => {
     mockAuth('u-resident', residentMembership);
     const res = await request(app)
@@ -138,7 +138,7 @@ describe('validation hardening — tickets & comments', () => {
   });
 });
 
-describe('validation hardening — units', () => {
+describe('validation hardening - units', () => {
   it('rejects a unit with floor above 500 (400)', async () => {
     mockAuth('u-admin', adminMembership);
     const res = await request(app)
@@ -173,7 +173,7 @@ describe('validation hardening — units', () => {
   });
 });
 
-describe('validation hardening — documents', () => {
+describe('validation hardening - documents', () => {
   const docRow = {
     id: 'd1', societyId: 's1', folderId: null, name: 'bylaws.pdf',
     description: null, fileUrl: '123-bylaws.pdf', fileSize: 100, mimeType: 'application/pdf',
@@ -220,7 +220,7 @@ describe('validation hardening — documents', () => {
   });
 });
 
-describe('validation hardening — visitor gate log', () => {
+describe('validation hardening - visitor gate log', () => {
   it('rejects a gate action that is not ENTRY/EXIT (400)', async () => {
     mockAuth('u-guard', guardMembership);
     const res = await request(app)
@@ -266,7 +266,7 @@ describe('validation hardening — visitor gate log', () => {
   });
 });
 
-describe('validation hardening — photo file serving (path traversal)', () => {
+describe('validation hardening - photo file serving (path traversal)', () => {
   it('rejects a ticket photo filename that escapes the upload dir (400)', async () => {
     const res = await request(app).get('/api/v1/tickets/photo/..%2F..%2F.env');
     expect(res.status).toBe(400);

@@ -21,6 +21,7 @@ export type AuthResource =
   | 'document'
   | 'parcel'
   | 'vendor'
+  | 'payment_proof'
   | 'analytics'
   | 'audit_log'
   | 'staff'
@@ -139,22 +140,28 @@ const PERMISSION_MATRIX: Record<AuthResource, Partial<Record<AuthAction, Role[]>
   audit_log: {
     read: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
   },
-  // Phase 7: vendor ratings — admins read/aggregate, residents/guards don't
+  // Phase 7: vendor ratings - admins read/aggregate, residents/guards don't.
+  // The vendor directory (search + create for ticket assignment) is deliberately
+  // the same audience as `ticket: update` - whoever can assign a ticket is who
+  // needs to look up or add a vendor.
   vendor: {
+    create: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
     read: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
+    // Editing a vendor - including adding the contact channel it was missing.
+    update: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
   },
-  // Phase 7: analytics dashboard — admins only
+  // Phase 7: analytics dashboard - admins only
   analytics: {
     read: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
   },
-  // Phase 8: staff management — admins CRUD, residents read on-duty
+  // Phase 8: staff management - admins CRUD, residents read on-duty
   staff: {
     create: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
     read: ['SUPER_ADMIN', 'COMMITTEE_ADMIN', 'RESIDENT'],
     update: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
     delete: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
   },
-  // Phase 8: SOS emergency alerts — residents trigger, admins manage
+  // Phase 8: SOS emergency alerts - residents trigger, admins manage
   sos_alert: {
     create: ['SUPER_ADMIN', 'COMMITTEE_ADMIN', 'RESIDENT'],
     read: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
@@ -165,6 +172,15 @@ const PERMISSION_MATRIX: Record<AuthResource, Partial<Record<AuthAction, Role[]>
   // additionally gated to SUPER_ADMIN membership role inside the route.
   platform_billing: {
     read: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
+  },
+  // ADR 008: manual payment proofs. Residents submit one for their own unit;
+  // only admins can read the queue or review (approve/reject). The matrix has no
+  // `review` action, so reviewing is gated as `update`, exactly like SOS
+  // acknowledgement and transfer clearance.
+  payment_proof: {
+    create: ['SUPER_ADMIN', 'COMMITTEE_ADMIN', 'RESIDENT'],
+    read: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
+    update: ['SUPER_ADMIN', 'COMMITTEE_ADMIN'],
   },
 };
 

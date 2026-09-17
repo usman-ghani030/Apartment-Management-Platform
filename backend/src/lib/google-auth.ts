@@ -4,10 +4,10 @@ import { AppError, ErrorCodes } from './app-error';
 // ── Google ID Token Verification ─────────────────────────────────────────────
 // Uses Google's official library, which checks signature, audience (client ID),
 // and expiry. The returned token is never trusted until this verification has
-// passed — it is used exactly once, to prove the user owns the Google account.
+// passed - it is used exactly once, to prove the user owns the Google account.
 
 export interface VerifiedGoogleProfile {
-  /** Google account ID (`sub` claim) — unique per Google account */
+  /** Google account ID (`sub` claim) - unique per Google account */
   sub: string;
   email: string | null;
   emailVerified: boolean;

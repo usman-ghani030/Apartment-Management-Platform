@@ -212,6 +212,58 @@ enum TicketStatus {
   CLOSED
 }
 
+// ── Manual payment verification (ADR 008) ──────────────────────────────────
+// A resident pays off-platform (bank transfer, Easypaisa, JazzCash, cash) and
+// uploads a screenshot; an admin approves or rejects it. Deliberately NOT a
+// PaymentProvider implementation - a gateway payment is confirmed by a webhook,
+// a proof is judged by a human.
+enum PaymentMethod {
+  BANK_TRANSFER
+  EASYPAISA
+  JAZZCASH
+  CASH_DEPOSIT
+  OTHER
+}
+
+enum PaymentProofStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model PaymentProof {
+  id        String   @id @default(uuid())
+  societyId String
+  society   Society  @relation(fields: [societyId], references: [id])
+  invoiceId String
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id])
+  // The submitting resident (the proof belongs to the unit's occupant who paid)
+  residentId String
+  resident   User   @relation("PaymentProofSubmittedBy", fields: [residentId], references: [id])
+  // Sanitized on-disk filename ("backend/uploads/payment-proofs/<file>"). The
+  // API never exposes this path - clients get /api/v1/payment-proofs/:id/screenshot,
+  // which is access-controlled, because this is financial evidence.
+  screenshotUrl  String
+  claimedAmount  Int              // paisa, same unit as Invoice.amount
+  paymentMethod  PaymentMethod
+  transactionReference String?
+  status         PaymentProofStatus @default(PENDING)
+  reviewedById   String?
+  reviewedBy     User?              @relation("PaymentProofReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt     DateTime?
+  rejectionReason String?           // required by the API when status becomes REJECTED
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  deletedAt      DateTime?
+
+  payment Payment?
+
+  @@index([societyId, status])
+  @@index([societyId, createdAt])
+  @@index([invoiceId])
+  @@index([residentId])
+}
+
 model Society {
   id        String   @id @default(uuid())
   name      String
@@ -241,9 +293,11 @@ model Society {
   documents       Document[]
   parcels      Parcel[]
   staff        Staff[]
+  vendors      Vendor[]
+  paymentProofs PaymentProof[]
   sosAlerts    SOSAlert[]
   invoiceReminders InvoiceReminder[]
-  // Phase 9: societies paying the PLATFORM — entirely separate from resident dues (Invoice)
+  // Phase 9: societies paying the PLATFORM - entirely separate from resident dues (Invoice)
   platformInvoices     PlatformInvoice[]
   platformCustomQuoteFlags PlatformCustomQuoteFlag[]
   auditLogs    AuditLog[]
@@ -307,7 +361,7 @@ model User {
   // Set to true when Google has verified the email ownership
   emailVerified Boolean  @default(false)
   // Bumped on password reset to invalidate every outstanding refresh token
-  // (refresh JWTs carry the version they were signed at — see ADR 001 flow)
+  // (refresh JWTs carry the version they were signed at - see ADR 001 flow)
   tokenVersion Int       @default(0)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -328,6 +382,8 @@ model User {
   documents     Document[]
   parcelsLoggedBy   Parcel[] @relation("ParcelLoggedBy")
   parcelsCollected  Parcel[] @relation("ParcelCollectedBy")
+  paymentProofsSubmitted PaymentProof[] @relation("PaymentProofSubmittedBy")
+  paymentProofsReviewed  PaymentProof[] @relation("PaymentProofReviewedBy")
   sosAlertsTriggered SOSAlert[] @relation("SOSAlertTriggeredBy")
   sosAlertsResolved  SOSAlert[] @relation("SOSAlertResolvedBy")
 }
@@ -403,6 +459,10 @@ model Invoice {
   amount        Int           // Amount in paisa, the lowest denomination (avoid floating point)
   dueDate       DateTime
   status        InvoiceStatus @default(ISSUED)
+  // How this invoice was eventually paid: 'gateway' (Safepay) or 'manual_proof'
+  // (an approved screenshot proof, ADR 008). Null while unpaid. This is the
+  // discriminator the reporting layer uses instead of merging two payment models.
+  paymentSource String?
   periodStart   DateTime?
   periodEnd     DateTime?
   // Phase 8: billing period marker for idempotent recurring billing (e.g. "2026-09")
@@ -412,6 +472,7 @@ model Invoice {
   deletedAt     DateTime?
 
   payments Payment[]
+  paymentProofs PaymentProof[]
   invoiceReminders InvoiceReminder[]
 
   @@unique([societyId, unitId, billingPeriod], name: "unique_billing_period")
@@ -429,8 +490,12 @@ model Payment {
   amount        Int
   currency      String   @default("pkr")
   // Payment gateway fields (Safepay hosted checkout)
-  provider      String   @default("offline") // offline | safepay
+  provider      String   @default("offline") // offline | safepay | manual_proof
   providerSessionId String? @unique // Safepay tracker token
+  // Set when this payment came from an approved manual proof (ADR 008). Unique,
+  // so one proof can never produce two payment rows.
+  paymentProofId String? @unique
+  paymentProof   PaymentProof? @relation(fields: [paymentProofId], references: [id])
   providerTxnRef    String? // Safepay transaction reference
   stripePaymentIntentId String? @unique
   stripeSessionId       String?
@@ -451,7 +516,7 @@ model Notice {
   title       String
   content     String
   category    String    @default("general")
-  // Phase 8: targeted notifications — which units should see this notice
+  // Phase 8: targeted notifications - which units should see this notice
   targetType  String    @default("ALL_UNITS") // ALL_UNITS | SPECIFIC_UNITS
   targetUnitIds Json?    // Array of unit IDs when targetType = SPECIFIC_UNITS
   publishedAt DateTime?
@@ -477,8 +542,13 @@ model Ticket {
   description String
   category    String       @default("other")
   status      TicketStatus @default(OPEN)
-  assignedTo  String?       // Vendor name/contact placeholder
-  photosUrl   String?       // Comma-separated URLs or JSON — Cloudinary integration deferred
+  // The real Vendor record this ticket is assigned to. `assignedTo` below keeps
+  // the vendor's name as a snapshot so vendor ratings (which aggregate by name)
+  // and legacy free-text assignments keep working unchanged.
+  vendorId    String?
+  vendor      Vendor?       @relation(fields: [vendorId], references: [id])
+  assignedTo  String?       // Vendor name snapshot (see vendorId above)
+  photosUrl   String?       // Comma-separated URLs or JSON - Cloudinary integration deferred
   // Phase 7 vendor ratings: captured when the ticket transitions to CLOSED
   rating        Int?        // 1-5 stars
   ratingComment String?
@@ -486,11 +556,11 @@ model Ticket {
   ratedBy       User?       @relation("TicketRatedBy", fields: [ratedById], references: [id])
   ratedAt       DateTime?
   // Phase 7 analytics: set once when the ticket transitions to CLOSED (unlike
-  // updatedAt, which also changes on re-rating) — enables accurate resolution time
+  // updatedAt, which also changes on re-rating) - enables accurate resolution time
   closedAt    DateTime?
   // Vendor magic-link access (no vendor accounts exist): the vendor's contact
   // email, plus the SHA-256 hash of their access token. The raw token is only
-  // ever inside the emailed link — never stored. Overwritten on reassignment
+  // ever inside the emailed link - never stored. Overwritten on reassignment
   // (kills the previous vendor's link) and cleared when the ticket is CLOSED.
   vendorEmail              String?
   vendorAccessTokenHash    String?   @unique
@@ -503,6 +573,7 @@ model Ticket {
 
   @@index([societyId, status])
   @@index([societyId, createdAt])
+  @@index([societyId, vendorId])
   @@index([residentId])
 }
 
@@ -613,6 +684,35 @@ model Staff {
   @@index([societyId, isActive])
 }
 
+// ── Vendor Directory ────────────────────────────────────────────────────────
+// Tenant-scoped vendor records used by the maintenance assignment flow. No
+// login accounts (PLAN.md §13): a vendor is contacted by email magic link
+// (ADR 005) and, manually, by a wa.me deep link. `phone` is always stored in
+// E.164 (+92XXXXXXXXXX) - normalization happens at the Zod boundary, never here.
+// No DB-unique on (societyId, phone): soft-deleted vendors must not block a
+// later re-add of the same number; the create route dedupes explicitly instead.
+model Vendor {
+  id        String    @id @default(uuid())
+  societyId String
+  society   Society   @relation(fields: [societyId], references: [id])
+  name      String
+  // At least ONE of phone/email must be present (enforced by the shared Zod
+  // schema, not the database): vendors are reachable by email magic link, by a
+  // manual wa.me hand-off, or both. Neither is required on its own.
+  phone     String?
+  email     String?
+  notes     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tickets   Ticket[]
+
+  @@index([societyId, name])
+  @@index([societyId, phone])
+  @@index([societyId, createdAt])
+}
+
 model SOSAlert {
   id              String          @id @default(uuid())
   societyId       String
@@ -637,14 +737,14 @@ model SOSAlert {
 
 // ── Password Reset (Phase 1 auth hardening) ────────────────────────────────
 // Single-use, time-limited reset tokens. Only the SHA-256 hash of the raw
-// token is stored — the raw token travels in the email link and is never
+// token is stored - the raw token travels in the email link and is never
 // persisted, so a DB leak cannot be replayed. `usedAt` enforces single-use
 // atomically with the password update; `expiresAt` enforces the TTL.
 model PasswordResetToken {
   id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id])
-  tokenHash String   @unique // sha256(rawToken) hex — never the raw token
+  tokenHash String   @unique // sha256(rawToken) hex - never the raw token
   expiresAt DateTime
   usedAt    DateTime? // null = unused; set inside the reset transaction
   createdAt DateTime @default(now())
@@ -672,7 +772,7 @@ model AuditLog {
 // ── Platform Billing (Phase 9, ADR 006) ────────────────────────────────────
 // Societies paying the PLATFORM a monthly fee. Deliberately a separate entity
 // from `Invoice` (Phase 2), which is residents paying their society via
-// Safepay — different payer, different recipient; never merge them.
+// Safepay - different payer, different recipient; never merge them.
 enum PlatformInvoiceStatus {
   PENDING
   PAID
@@ -683,21 +783,21 @@ model PlatformInvoice {
   id          String               @id @default(uuid())
   societyId   String
   society     Society              @relation(fields: [societyId], references: [id])
-  // Billing period marker "YYYY-MM". Unique per society — running the monthly
+  // Billing period marker "YYYY-MM". Unique per society - running the monthly
   // job twice must never generate two invoices for the same period.
   billingPeriod String
-  // Active unit count at generation time — stored, never recomputed later.
+  // Active unit count at generation time - stored, never recomputed later.
   unitCountSnapshot Int
   // Progressive calculation breakdown (band label, units, rate, subtotal) so
   // the admin view can show exactly how the total was produced.
   calculationBreakdown Json
-  // Total in paisa (rupees × 100) — same convention as Invoice.amount.
+  // Total in paisa (rupees × 100) - same convention as Invoice.amount.
   totalAmountPaisa  Int
   dueDate     DateTime
   status      PlatformInvoiceStatus @default(PENDING)
   generatedAt DateTime             @default(now())
   paidAt      DateTime?
-  // Set by the Super Admin "Mark as Paid" action — the ONLY way an invoice
+  // Set by the Super Admin "Mark as Paid" action - the ONLY way an invoice
   // becomes PAID (no self-service button for Committee Admins).
   markedPaidBySuperAdminUserId String?
   markedPaidBySuperAdmin       User?  @relation("PlatformInvoiceMarkedPaidBy", fields: [markedPaidBySuperAdminUserId], references: [id])
@@ -711,7 +811,7 @@ model PlatformInvoice {
 }
 
 // A society over the 500-unit auto-invoice cap (ADR 006) is never invoiced by
-// the formula — it is flagged once per period for a manual custom-quote
+// the formula - it is flagged once per period for a manual custom-quote
 // conversation instead.
 model PlatformCustomQuoteFlag {
   id          String   @id @default(uuid())

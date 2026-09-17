@@ -42,9 +42,9 @@ export default function ForgotPasswordPage() {
         <div className="absolute bottom-[-10%] right-[-5%] w-[60%] h-[60%] bg-accent-800/[0.02] rounded-full blur-[120px]" />
       </div>
 
-      {/* Logo — matches login page */}
+      {/* Logo - matches login page */}
       <a href="/" className="absolute top-8 left-8 flex items-center gap-2.5 group z-10">
-        <img src="/logo3.png" alt="OmniHome" className="h-[110px] w-auto object-contain" />
+        <img src="/logo3.png" alt="OmniHome" className="h-14 w-auto object-contain" />
         <span className="text-title-sm font-display text-gray-900">
           Omni<span className="text-accent-600">Home</span>
         </span>

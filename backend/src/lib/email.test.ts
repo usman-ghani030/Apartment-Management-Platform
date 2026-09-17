@@ -39,7 +39,7 @@ describe('GmailSmtpEmailProvider', () => {
 
     await provider.sendEmail(MESSAGE);
 
-    // SMTP details live only here — service gmail + the app-password auth.
+    // SMTP details live only here - service gmail + the app-password auth.
     expect(mocks.createTransport).toHaveBeenCalledWith(
       expect.objectContaining({
         service: 'gmail',

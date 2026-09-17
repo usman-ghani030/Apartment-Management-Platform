@@ -50,7 +50,7 @@ const passInclude = {
   resident: { select: { name: true } },
 } as const;
 
-// ── GET /api/v1/visitors — list visitor passes ────────────────────────────
+// ── GET /api/v1/visitors - list visitor passes ────────────────────────────
 router.get('/', requireAuth, loadMembership, async (req, res, next) => {
   try {
     const societyId = req.membership?.societyId;
@@ -82,14 +82,14 @@ router.get('/', requireAuth, loadMembership, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ── POST /api/v1/visitors — create visitor pass (resident) ────────────────
+// ── POST /api/v1/visitors - create visitor pass (resident) ────────────────
 router.post('/', requireAuth, loadMembership, requireRole('create', 'visitor'), async (req, res, next) => {
   try {
     const input = CreateVisitorPassSchema.parse(req.body);
     const societyId = req.membership?.societyId;
     if (!societyId) throw new AppError(ErrorCodes.MEMBERSHIP_REQUIRED, 403, 'Active membership required');
 
-    // Look up unit from DB (defensive — not relying on req.membership.unitId)
+    // Look up unit from DB (defensive - not relying on req.membership.unitId)
     const unitIds = await getUserUnitIds(req.user!.id, societyId);
     if (unitIds.length === 0) throw new AppError(ErrorCodes.VALIDATION_ERROR, 400, 'You must have a unit assigned to create visitor passes');
     const unitId = unitIds[0];
@@ -123,7 +123,7 @@ router.post('/', requireAuth, loadMembership, requireRole('create', 'visitor'), 
   } catch (err) { next(err); }
 });
 
-// ── GET /api/v1/visitors/:id — view a single visitor pass ─────────────────
+// ── GET /api/v1/visitors/:id - view a single visitor pass ─────────────────
 router.get('/:id', requireAuth, loadMembership, async (req, res, next) => {
   try {
     const societyId = req.membership?.societyId;
@@ -137,7 +137,7 @@ router.get('/:id', requireAuth, loadMembership, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ── PATCH /api/v1/visitors/:id — update visitor pass ──────────────────────
+// ── PATCH /api/v1/visitors/:id - update visitor pass ──────────────────────
 router.patch('/:id', requireAuth, loadMembership, requireRole('update', 'visitor'), async (req, res, next) => {
   try {
     const input = UpdateVisitorPassSchema.parse(req.body);
@@ -186,7 +186,7 @@ router.patch('/:id', requireAuth, loadMembership, requireRole('update', 'visitor
   } catch (err) { next(err); }
 });
 
-// ── POST /api/v1/visitors/verify/:qrToken — verify QR code at gate ───────
+// ── POST /api/v1/visitors/verify/:qrToken - verify QR code at gate ───────
 router.post('/verify/:qrToken', requireAuth, loadMembership, async (req, res, next) => {
   try {
     const societyId = req.membership?.societyId;
@@ -200,7 +200,7 @@ router.post('/verify/:qrToken', requireAuth, loadMembership, async (req, res, ne
       where: { qrToken: req.params.qrToken, societyId },
       include: passInclude,
     });
-    if (!pass) throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Invalid QR code — visitor pass not found');
+    if (!pass) throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Invalid QR code - visitor pass not found');
     if (pass.deletedAt) throw new AppError(ErrorCodes.NOT_FOUND, 404, 'This pass has been deleted');
     if (pass.status === 'CANCELLED') throw new AppError(ErrorCodes.CONFLICT, 409, 'This pass has been cancelled');
     if (pass.status === 'EXPIRED' || (pass.expiresAt && pass.expiresAt < new Date())) throw new AppError(ErrorCodes.CONFLICT, 409, 'This pass has expired');
@@ -218,7 +218,7 @@ router.post('/verify/:qrToken', requireAuth, loadMembership, async (req, res, ne
   } catch (err) { next(err); }
 });
 
-// ── POST /api/v1/visitors/:id/gate — log gate entry/exit ──────────────────
+// ── POST /api/v1/visitors/:id/gate - log gate entry/exit ──────────────────
 const GateLogEntrySchema = z.object({
   action: z.enum(['ENTRY', 'EXIT'], { errorMap: () => ({ message: 'Action must be ENTRY or EXIT' }) }),
   notes: z.string().max(500, 'Notes must be under 500 characters').optional().nullable(),
@@ -242,10 +242,10 @@ router.post('/:id/gate', requireAuth, loadMembership, async (req, res, next) => 
     if (!pass) throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Visitor pass not found');
 
     if (action === 'ENTRY' && pass.status !== 'APPROVED' && pass.status !== 'PENDING') {
-      throw new AppError(ErrorCodes.CONFLICT, 409, `Cannot check in — pass is ${pass.status.toLowerCase()}`);
+      throw new AppError(ErrorCodes.CONFLICT, 409, `Cannot check in - pass is ${pass.status.toLowerCase()}`);
     }
     if (action === 'EXIT' && pass.status !== 'CHECKED_IN') {
-      throw new AppError(ErrorCodes.CONFLICT, 409, 'Cannot check out — visitor is not checked in');
+      throw new AppError(ErrorCodes.CONFLICT, 409, 'Cannot check out - visitor is not checked in');
     }
 
     // Create gate log entry
@@ -281,7 +281,7 @@ router.post('/:id/gate', requireAuth, loadMembership, async (req, res, next) => 
   } catch (err) { next(err); }
 });
 
-// ── POST /api/v1/visitors/:id/cancel — cancel a visitor pass ──────────────
+// ── POST /api/v1/visitors/:id/cancel - cancel a visitor pass ──────────────
 router.post('/:id/cancel', requireAuth, loadMembership, async (req, res, next) => {
   try {
     const societyId = req.membership?.societyId;

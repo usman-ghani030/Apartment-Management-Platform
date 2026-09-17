@@ -9,12 +9,28 @@ import { requireRole } from '../middleware/rbac';
 import { logAudit } from '../lib/audit';
 import {
   CSVUnitRowSchema,
+  CSVBuildingRowSchema,
   CSV_IMPORT_MAX_ROWS,
   CSV_IMPORT_MAX_FILE_SIZE_BYTES,
   CSV_IMPORT_HEADERS,
+  CSV_BUILDING_HEADERS,
   type CSVUnitRow,
+  type CSVBuildingRow,
 } from '@apartment/shared';
-import { ZodError } from 'zod';
+import { parseCsvBuffer, csvLineNumber } from '../lib/csv-parse';
+
+/**
+ * Flatten zod issues into one actionable reason string.
+ *
+ * Deliberately structural rather than `err instanceof ZodError`: the shared
+ * package and this file can end up loading two copies of zod (CJS + ESM), and
+ * an `instanceof` check across that boundary silently fails, which used to turn
+ * a precise "Bedroom Type must be one of ..." into "Unexpected validation
+ * error". The schema is always run with `safeParse` for the same reason.
+ */
+function formatZodIssues(error: { issues: { path: (string | number)[]; message: string }[] }): string {
+  return error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ');
+}
 
 const router = Router();
 
@@ -60,7 +76,7 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 // ── POST /api/v1/import/validate ────────────────────────────────────────────
-// Parse CSV, validate every row, check duplicates. Returns a preview — NO DB writes.
+// Parse CSV, validate every row, check duplicates. Returns a preview - NO DB writes.
 router.post(
   '/validate',
   requireAuth,
@@ -76,33 +92,38 @@ router.post(
       }
 
       // Parse CSV
-      const text = req.file.buffer.toString('utf-8');
-      // Strip BOM if present
-      const cleanText = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
-      const parsed = Papa.parse(cleanText, {
-        header: true,
-        skipEmptyLines: true,
-        transformHeader: (h: string) => h.trim(),
-      });
+      const { rows, headers, errors: parseErrors } = parseCsvBuffer(req.file.buffer);
 
-      if (parsed.errors.length > 0) {
+      if (parseErrors.length > 0) {
+        const line = csvLineNumber(parseErrors[0].row);
         throw new AppError(
           ErrorCodes.VALIDATION_ERROR,
           400,
-          `CSV parse error: ${parsed.errors[0].message} (row ${parsed.errors[0].row})`
+          `CSV parse error: ${parseErrors[0].message}${line ? ` (line ${line})` : ''}`
         );
       }
 
-      const rows = parsed.data as Record<string, string>[];
       if (rows.length === 0) {
         throw new AppError(ErrorCodes.VALIDATION_ERROR, 400, 'CSV file is empty (no data rows)');
+      }
+
+      // Catch a wrong or misspelled header row up front, otherwise every row
+      // fails validation and the user only sees a wall of per-row errors.
+      const missingHeaders = CSV_IMPORT_HEADERS.filter((h) => !headers.includes(h));
+      if (missingHeaders.length > 0) {
+        throw new AppError(
+          ErrorCodes.VALIDATION_ERROR,
+          400,
+          `CSV is missing required column${missingHeaders.length > 1 ? 's' : ''}: ${missingHeaders.join(', ')}. ` +
+            `Expected columns: ${CSV_IMPORT_HEADERS.join(', ')}.`
+        );
       }
 
       if (rows.length > CSV_IMPORT_MAX_ROWS) {
         throw new AppError(
           ErrorCodes.VALIDATION_ERROR,
           400,
-          `CSV has ${rows.length} rows — maximum allowed is ${CSV_IMPORT_MAX_ROWS}`
+          `CSV has ${rows.length} rows - maximum allowed is ${CSV_IMPORT_MAX_ROWS}`
         );
       }
 
@@ -131,27 +152,24 @@ router.post(
         const row = rows[i];
         const rowNum = i + 2; // 1-indexed, +1 for header
 
-        try {
-          const validated = CSVUnitRowSchema.parse(row);
-          const key = `${validated['Building Name']}::${validated['Unit Number']}`;
+        const validated = CSVUnitRowSchema.safeParse(row);
+        if (!validated.success) {
+          errors.push({ row: rowNum, reason: formatZodIssues(validated.error) });
+          continue;
+        }
 
-          if (existingSet.has(key)) {
-            toSkip.push({
-              row: rowNum,
-              buildingName: validated['Building Name'],
-              unitNumber: validated['Unit Number'],
-              reason: 'Unit already exists in this building',
-            });
-          } else {
-            toCreate.push(validated);
-          }
-        } catch (err) {
-          if (err instanceof ZodError) {
-            const msg = err.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');
-            errors.push({ row: rowNum, reason: msg });
-          } else {
-            errors.push({ row: rowNum, reason: 'Unexpected validation error' });
-          }
+        const unit = validated.data;
+        const key = `${unit['Building Name']}::${unit['Unit Number']}`;
+
+        if (existingSet.has(key)) {
+          toSkip.push({
+            row: rowNum,
+            buildingName: unit['Building Name'],
+            unitNumber: unit['Unit Number'],
+            reason: 'Unit already exists in this building',
+          });
+        } else {
+          toCreate.push(unit);
         }
       }
 
@@ -170,7 +188,7 @@ router.post(
 
 // ── POST /api/v1/import/confirm ─────────────────────────────────────────────
 // Takes validated rows and creates buildings + units. Runs synchronously but
-// fast — for a 1000-row import it's a single transaction batch. Returns a job ID.
+// fast - for a 1000-row import it's a single transaction batch. Returns a job ID.
 router.post(
   '/confirm',
   requireAuth,
@@ -193,15 +211,11 @@ router.post(
       // Re-validate every row (don't trust the client copy)
       const validatedRows: CSVUnitRow[] = [];
       for (let i = 0; i < toCreate.length; i++) {
-        try {
-          validatedRows.push(CSVUnitRowSchema.parse(toCreate[i]));
-        } catch (err) {
-          if (err instanceof ZodError) {
-            const msg = err.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');
-            throw new AppError(ErrorCodes.VALIDATION_ERROR, 400, `Row ${i + 2}: ${msg}`);
-          }
-          throw new AppError(ErrorCodes.VALIDATION_ERROR, 400, `Row ${i + 2}: invalid data`);
+        const parsed = CSVUnitRowSchema.safeParse(toCreate[i]);
+        if (!parsed.success) {
+          throw new AppError(ErrorCodes.VALIDATION_ERROR, 400, `Row ${i + 2}: ${formatZodIssues(parsed.error)}`);
         }
+        validatedRows.push(parsed.data);
       }
 
       // Create a job
@@ -368,6 +382,242 @@ router.get('/status/:jobId', requireAuth, loadMembership, async (req, res, next)
 
 // ── GET /api/v1/import/sample-csv ───────────────────────────────────────────
 // Download a sample CSV with headers and example rows
+// ── Building CSV import ────────────────────────────────────────────────────
+// Buildings are a single-field entity (name only), so the building import is
+// the same two-step flow but much simpler: one column in, dedupe on name.
+
+interface BuildingImportJob {
+  id: string;
+  societyId: string;
+  status: 'completed' | 'failed';
+  created: number;
+  skipped: number;
+  errors: number;
+  totalRows: number;
+  errorDetails: { row: number; reason: string }[];
+  createdAt: number;
+}
+
+const buildingJobs = new Map<string, BuildingImportJob>();
+
+// Cleanup expired building jobs every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, job] of buildingJobs) {
+    if (now - job.createdAt > JOB_TTL_MS) buildingJobs.delete(id);
+  }
+}, 5 * 60 * 1000);
+
+// POST /api/v1/import/buildings/validate - parse + validate, NO DB writes
+router.post(
+  '/buildings/validate',
+  requireAuth,
+  loadMembership,
+  requireRole('create', 'building'),
+  upload.single('file'),
+  async (req, res, next) => {
+    try {
+      const societyId = req.membership!.societyId;
+
+      if (!req.file) {
+        throw new AppError(ErrorCodes.VALIDATION_ERROR, 400, 'No CSV file uploaded');
+      }
+
+      const { rows, headers, errors: parseErrors } = parseCsvBuffer(req.file.buffer);
+      if (parseErrors.length > 0) {
+        const line = csvLineNumber(parseErrors[0].row);
+        throw new AppError(
+          ErrorCodes.VALIDATION_ERROR,
+          400,
+          `CSV parse error: ${parseErrors[0].message}${line ? ` (line ${line})` : ''}`
+        );
+      }
+
+      if (rows.length === 0) {
+        throw new AppError(ErrorCodes.VALIDATION_ERROR, 400, 'CSV file is empty (no data rows)');
+      }
+
+      // Accept either the single-column building format OR the full 7-column
+      // unit format (Building Name is the only field that matters here).
+      const hasBuildingName = headers.includes('Building Name');
+      if (!hasBuildingName) {
+        throw new AppError(
+          ErrorCodes.VALIDATION_ERROR,
+          400,
+          `CSV is missing required column: Building Name. ` +
+            `Expected columns: ${CSV_IMPORT_HEADERS.join(', ')} or just Building Name.`
+        );
+      }
+      if (rows.length > CSV_IMPORT_MAX_ROWS) {
+        throw new AppError(
+          ErrorCodes.VALIDATION_ERROR,
+          400,
+          `CSV has ${rows.length} rows - maximum allowed is ${CSV_IMPORT_MAX_ROWS}`
+        );
+      }
+
+      const existingBuildings = await prisma.building.findMany({
+        where: { societyId, deletedAt: null },
+        select: { name: true },
+      });
+      const existingNames = new Set(existingBuildings.map((b) => b.name));
+
+      // Store full rows for the preview so extra columns (Unit Number, etc.)
+      // are visible. Only Building Name is validated and used on confirm.
+      const toCreate: Record<string, string>[] = [];
+      const toSkip: { row: number; buildingName: string; reason: string }[] = [];
+      const errors: { row: number; reason: string }[] = [];
+      const seenInFile = new Set<string>();
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const rowNum = i + 2; // 1-indexed, +1 for header
+        const validated = CSVBuildingRowSchema.safeParse(row);
+        if (!validated.success) {
+          errors.push({ row: rowNum, reason: formatZodIssues(validated.error) });
+          continue;
+        }
+
+        const name = validated.data['Building Name'];
+        if (existingNames.has(name)) {
+          toSkip.push({ row: rowNum, buildingName: name, reason: 'Building already exists' });
+        } else if (seenInFile.has(name)) {
+          toSkip.push({ row: rowNum, buildingName: name, reason: 'Duplicate row in this file' });
+        } else {
+          seenInFile.add(name);
+          toCreate.push(row); // preserve full row for preview
+        }
+      }
+
+      sendSuccess(res, { toCreate, toSkip, errors, totalRows: rows.length });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// POST /api/v1/import/buildings/confirm - create the validated buildings
+router.post(
+  '/buildings/confirm',
+  requireAuth,
+  loadMembership,
+  requireRole('create', 'building'),
+  async (req, res, next) => {
+    try {
+      const societyId = req.membership!.societyId;
+      const userId = req.user!.id;
+      const { toCreate } = req.body as { toCreate: Record<string, string>[] };
+
+      if (!Array.isArray(toCreate) || toCreate.length === 0) {
+        throw new AppError(ErrorCodes.VALIDATION_ERROR, 400, 'No rows to import');
+      }
+      if (toCreate.length > CSV_IMPORT_MAX_ROWS) {
+        throw new AppError(ErrorCodes.VALIDATION_ERROR, 400, `Too many rows: ${toCreate.length} (max ${CSV_IMPORT_MAX_ROWS})`);
+      }
+
+      // Re-validate (never trust the client copy) and de-dupe again.
+      // Each row may be the full 7-column format or just { Building Name }.
+      const validatedRows: { name: string; row: Record<string, string> }[] = [];
+      const seen = new Set<string>();
+      for (let i = 0; i < toCreate.length; i++) {
+        const parsed = CSVBuildingRowSchema.safeParse(toCreate[i]);
+        if (!parsed.success) {
+          throw new AppError(ErrorCodes.VALIDATION_ERROR, 400, `Row ${i + 2}: ${formatZodIssues(parsed.error)}`);
+        }
+        const name = parsed.data['Building Name'];
+        if (seen.has(name)) continue;
+        seen.add(name);
+        validatedRows.push({ name, row: toCreate[i] });
+      }
+
+      const existingBuildings = await prisma.building.findMany({
+        where: { societyId, deletedAt: null },
+        select: { name: true },
+      });
+      const existingNames = new Set(existingBuildings.map((b) => b.name));
+
+      const jobId = `import-building-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const job: BuildingImportJob = {
+        id: jobId,
+        societyId,
+        status: 'completed',
+        created: 0,
+        skipped: 0,
+        errors: 0,
+        totalRows: validatedRows.length,
+        errorDetails: [],
+        createdAt: Date.now(),
+      };
+
+      for (let i = 0; i < validatedRows.length; i++) {
+        const { name } = validatedRows[i];
+        if (existingNames.has(name)) {
+          job.skipped++;
+          continue;
+        }
+        try {
+          const building = await prisma.building.create({ data: { name, societyId } });
+          existingNames.add(name);
+          job.created++;
+          await logAudit({
+            societyId,
+            actorUserId: userId,
+            action: 'BUILDING_CREATED',
+            entityType: 'building',
+            entityId: building.id,
+            after: { name },
+          });
+        } catch (err) {
+          job.errors++;
+          job.errorDetails.push({
+            row: i + 2,
+            reason: err instanceof Error ? err.message : 'Unknown error',
+          });
+        }
+      }
+
+      buildingJobs.set(jobId, job);
+
+      await logAudit({
+        societyId,
+        actorUserId: userId,
+        action: 'CSV_IMPORT_COMPLETED',
+        entityType: 'import',
+        entityId: jobId,
+        after: { kind: 'buildings', created: job.created, skipped: job.skipped, errors: job.errors, totalRows: job.totalRows },
+      });
+
+      sendSuccess(
+        res,
+        {
+          jobId,
+          status: job.status,
+          created: job.created,
+          skipped: job.skipped,
+          errors: job.errors,
+          totalRows: job.totalRows,
+        },
+        202
+      );
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// GET /api/v1/import/buildings/sample-csv - same 7-column format as units
+router.get('/buildings/sample-csv', requireAuth, (_req, res) => {
+  const sampleRows = [
+    { 'Building Name': 'Tower A', 'Unit Number': '101', 'Floor': '1', 'Bedroom Type': 'TWO_BED', 'Primary Contact Name': 'John Smith', 'Primary Contact Email': 'john@example.com', 'Primary Contact Phone': '+92 300 1234567' },
+    { 'Building Name': 'Tower A', 'Unit Number': '102', 'Floor': '1', 'Bedroom Type': 'ONE_BED', 'Primary Contact Name': '', 'Primary Contact Email': '', 'Primary Contact Phone': '' },
+    { 'Building Name': 'Tower B', 'Unit Number': '201', 'Floor': '2', 'Bedroom Type': 'THREE_BED', 'Primary Contact Name': 'Jane Doe', 'Primary Contact Email': 'jane@example.com', 'Primary Contact Phone': '' },
+  ];
+  const csv = Papa.unparse(sampleRows, { columns: CSV_IMPORT_HEADERS as unknown as string[] });
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="sample-import.csv"');
+  res.send(csv);
+});
+
 router.get('/sample-csv', requireAuth, (_req, res) => {
   const sampleRows = [
     { 'Building Name': 'Tower A', 'Unit Number': '101', 'Floor': '1', 'Bedroom Type': 'TWO_BED', 'Primary Contact Name': 'John Smith', 'Primary Contact Email': 'john@example.com', 'Primary Contact Phone': '+92 300 1234567' },

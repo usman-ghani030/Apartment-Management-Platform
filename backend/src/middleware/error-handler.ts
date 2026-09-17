@@ -16,7 +16,7 @@ export function errorHandler(
     return;
   }
 
-  // Zod validation error — transform into a friendly AppError.
+  // Zod validation error - transform into a friendly AppError.
   // `instanceof` can miss when two copies of zod land in the module graph
   // (vitest does this), so duck-type as a fallback: name + issues array.
   const issues = (err as { issues?: unknown[]; errors?: unknown[] }).issues
@@ -29,7 +29,7 @@ export function errorHandler(
     return;
   }
 
-  // Multer upload errors — surface as clear 400 validation errors, not 500s.
+  // Multer upload errors - surface as clear 400 validation errors, not 500s.
   if (err.name === 'MulterError') {
     const code = (err as { code?: string }).code;
     const message =
@@ -44,10 +44,10 @@ export function errorHandler(
     return;
   }
 
-  // Payment gateway failure — the provider logs the full Safepay reason server-side;
+  // Payment gateway failure - the provider logs the full Safepay reason server-side;
   // the client gets a clear, honest message (no internal details leaked).
   if (err instanceof PaymentProviderError) {
-    console.error(`[PaymentGateway] ${err.message} — check SAFEPAY_* env vars and Railway logs for the Safepay error detail`);
+    console.error(`[PaymentGateway] ${err.message} - check SAFEPAY_* env vars and Railway logs for the Safepay error detail`);
     sendError(
       res,
       new AppError(
@@ -76,7 +76,7 @@ export function errorHandler(
     }
   }
 
-  // Unexpected errors — log full details and return generic 500
+  // Unexpected errors - log full details and return generic 500
   const errorId = Math.random().toString(36).substring(2, 10);
   console.error(`[UnhandledError:${errorId}]`, err instanceof Error ? err.stack || err.message : err);
   sendError(

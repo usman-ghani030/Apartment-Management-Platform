@@ -12,7 +12,12 @@ type NotificationEvent =
   | { type: 'SOS_ALERT_TRIGGERED'; sosAlertId: string; societyId: string; unitId: string; residentId: string; category: string }
   | { type: 'SOS_ALERT_ACKNOWLEDGED'; sosAlertId: string; societyId: string; acknowledgedBy: string }
   | { type: 'SOS_ALERT_RESOLVED'; sosAlertId: string; societyId: string; resolvedBy: string }
-  | { type: 'RECURRING_BILLING_GENERATED'; invoiceId: string; invoiceNumber: string; societyId: string; unitId: string; unitNumber: string; billingPeriod: string };
+  | { type: 'RECURRING_BILLING_GENERATED'; invoiceId: string; invoiceNumber: string; societyId: string; unitId: string; unitNumber: string; billingPeriod: string }
+  // ADR 008 - manual payment proofs. SUBMITTED goes to the society's admins,
+  // APPROVED/REJECTED go back to the resident who submitted the proof.
+  | { type: 'PAYMENT_PROOF_SUBMITTED'; proofId: string; invoiceId: string; invoiceNumber: string; societyId: string; unitNumber: string; residentName: string; claimedAmount: number; paymentMethod: string }
+  | { type: 'PAYMENT_PROOF_APPROVED'; proofId: string; invoiceId: string; invoiceNumber: string; societyId: string; residentId: string; claimedAmount: number }
+  | { type: 'PAYMENT_PROOF_REJECTED'; proofId: string; invoiceId: string; invoiceNumber: string; societyId: string; residentId: string; claimedAmount: number; rejectionReason: string };
 
 
 /**
@@ -20,7 +25,7 @@ type NotificationEvent =
  * Future phases will wire up email and/or push notifications.
  *
  * Email must go through the shared provider (ADR 004): import `sendEmail` from
- * `./email` and call it alongside the audit log — never a provider SDK directly,
+ * `./email` and call it alongside the audit log - never a provider SDK directly,
  * so a future provider switch stays contained.
  */
 export async function sendNotification(event: NotificationEvent): Promise<void> {
@@ -137,6 +142,57 @@ export async function sendNotification(event: NotificationEvent): Promise<void> 
         entityType: 'sos_alert',
         entityId: event.sosAlertId,
         after: { resolvedBy: event.resolvedBy },
+      });
+      break;
+
+    case 'PAYMENT_PROOF_SUBMITTED':
+      await logAudit({
+        societyId: event.societyId,
+        actorUserId: null,
+        action: 'NOTIFICATION_PAYMENT_PROOF_SUBMITTED',
+        entityType: 'payment_proof',
+        entityId: event.proofId,
+        after: {
+          invoiceId: event.invoiceId,
+          invoiceNumber: event.invoiceNumber,
+          unitNumber: event.unitNumber,
+          residentName: event.residentName,
+          claimedAmount: event.claimedAmount,
+          paymentMethod: event.paymentMethod,
+        },
+      });
+      break;
+
+    case 'PAYMENT_PROOF_APPROVED':
+      await logAudit({
+        societyId: event.societyId,
+        actorUserId: null,
+        action: 'NOTIFICATION_PAYMENT_PROOF_APPROVED',
+        entityType: 'payment_proof',
+        entityId: event.proofId,
+        after: {
+          invoiceId: event.invoiceId,
+          invoiceNumber: event.invoiceNumber,
+          residentId: event.residentId,
+          claimedAmount: event.claimedAmount,
+        },
+      });
+      break;
+
+    case 'PAYMENT_PROOF_REJECTED':
+      await logAudit({
+        societyId: event.societyId,
+        actorUserId: null,
+        action: 'NOTIFICATION_PAYMENT_PROOF_REJECTED',
+        entityType: 'payment_proof',
+        entityId: event.proofId,
+        after: {
+          invoiceId: event.invoiceId,
+          invoiceNumber: event.invoiceNumber,
+          residentId: event.residentId,
+          claimedAmount: event.claimedAmount,
+          rejectionReason: event.rejectionReason,
+        },
       });
       break;
 

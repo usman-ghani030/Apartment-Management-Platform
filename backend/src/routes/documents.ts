@@ -31,7 +31,7 @@ const upload = multer({
   storage,
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max
   // Server-side type allowlist for document uploads (Phase 1/6 convention:
-  // never trust the client — reject executables, HTML, etc.). Broad enough
+  // never trust the client - reject executables, HTML, etc.). Broad enough
   // for real society documents (bylaws, minutes, contracts, invoices).
   fileFilter: (_req, file, cb) => {
     const allowed = [
@@ -84,7 +84,7 @@ const docInclude = {
 
 // ── FOLDER ROUTES ──────────────────────────────────────────────────────────
 
-// GET /api/v1/documents/folders — list folders
+// GET /api/v1/documents/folders - list folders
 router.get('/folders', requireAuth, loadMembership, async (req, res, next) => {
   try {
     const societyId = req.membership!.societyId;
@@ -96,7 +96,7 @@ router.get('/folders', requireAuth, loadMembership, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/v1/documents/folders — create folder
+// POST /api/v1/documents/folders - create folder
 router.post('/folders', requireAuth, loadMembership, requireRole('create', 'document'), async (req, res, next) => {
   try {
     const input = CreateDocumentFolderSchema.parse(req.body);
@@ -116,7 +116,7 @@ router.post('/folders', requireAuth, loadMembership, requireRole('create', 'docu
   } catch (err) { next(err); }
 });
 
-// PATCH /api/v1/documents/folders/:id — update folder
+// PATCH /api/v1/documents/folders/:id - update folder
 router.patch('/folders/:id', requireAuth, loadMembership, requireRole('update', 'document'), async (req, res, next) => {
   try {
     const input = UpdateDocumentFolderSchema.parse(req.body);
@@ -134,7 +134,7 @@ router.patch('/folders/:id', requireAuth, loadMembership, requireRole('update', 
   } catch (err) { next(err); }
 });
 
-// DELETE /api/v1/documents/folders/:id — delete folder
+// DELETE /api/v1/documents/folders/:id - delete folder
 router.delete('/folders/:id', requireAuth, loadMembership, requireRole('delete', 'document'), async (req, res, next) => {
   try {
     const societyId = req.membership!.societyId;
@@ -158,7 +158,7 @@ router.delete('/folders/:id', requireAuth, loadMembership, requireRole('delete',
 
 // ── DOCUMENT ROUTES ─────────────────────────────────────────────────────────
 
-// GET /api/v1/documents — list documents
+// GET /api/v1/documents - list documents
 router.get('/', requireAuth, loadMembership, async (req, res, next) => {
   try {
     const societyId = req.membership!.societyId;
@@ -177,7 +177,7 @@ router.get('/', requireAuth, loadMembership, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/v1/documents/upload — upload document
+// POST /api/v1/documents/upload - upload document
 router.post('/upload', requireAuth, loadMembership, requireRole('create', 'document'), upload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) throw new AppError(ErrorCodes.VALIDATION_ERROR, 400, 'No file provided');
@@ -209,7 +209,7 @@ router.post('/upload', requireAuth, loadMembership, requireRole('create', 'docum
   } catch (err) { next(err); }
 });
 
-// GET /api/v1/documents/:id/download — download document file
+// GET /api/v1/documents/:id/download - download document file
 router.get('/:id/download', requireAuth, loadMembership, async (req, res, next) => {
   try {
     const societyId = req.membership!.societyId;
@@ -225,7 +225,7 @@ router.get('/:id/download', requireAuth, loadMembership, async (req, res, next) 
   } catch (err) { next(err); }
 });
 
-// PATCH /api/v1/documents/:id — update document metadata
+// PATCH /api/v1/documents/:id - update document metadata
 router.patch('/:id', requireAuth, loadMembership, requireRole('update', 'document'), async (req, res, next) => {
   try {
     const input = UpdateDocumentSchema.parse(req.body);
@@ -249,7 +249,7 @@ router.patch('/:id', requireAuth, loadMembership, requireRole('update', 'documen
   } catch (err) { next(err); }
 });
 
-// DELETE /api/v1/documents/:id — delete document
+// DELETE /api/v1/documents/:id - delete document
 router.delete('/:id', requireAuth, loadMembership, requireRole('delete', 'document'), async (req, res, next) => {
   try {
     const societyId = req.membership!.societyId;

@@ -59,7 +59,7 @@ const pollInclude = {
   votes: { select: { optionIndex: true, unitId: true } },
 } as const;
 
-// ── GET /api/v1/polls — list polls ─────────────────────────────────────────
+// ── GET /api/v1/polls - list polls ─────────────────────────────────────────
 router.get('/', requireAuth, loadMembership, async (req, res, next) => {
   try {
     const societyId = req.membership?.societyId;
@@ -81,7 +81,7 @@ router.get('/', requireAuth, loadMembership, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ── POST /api/v1/polls — create poll (admin) ──────────────────────────────
+// ── POST /api/v1/polls - create poll (admin) ──────────────────────────────
 router.post('/', requireAuth, loadMembership, requireRole('create', 'poll'), async (req, res, next) => {
   try {
     const input = CreatePollSchema.parse(req.body);
@@ -118,7 +118,7 @@ router.post('/', requireAuth, loadMembership, requireRole('create', 'poll'), asy
   } catch (err) { next(err); }
 });
 
-// ── GET /api/v1/polls/:id — view a single poll ────────────────────────────
+// ── GET /api/v1/polls/:id - view a single poll ────────────────────────────
 router.get('/:id', requireAuth, loadMembership, async (req, res, next) => {
   try {
     const societyId = req.membership?.societyId;
@@ -134,7 +134,7 @@ router.get('/:id', requireAuth, loadMembership, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ── PATCH /api/v1/polls/:id — update poll (admin) ────────────────────────
+// ── PATCH /api/v1/polls/:id - update poll (admin) ────────────────────────
 router.patch('/:id', requireAuth, loadMembership, requireRole('update', 'poll'), async (req, res, next) => {
   try {
     const input = UpdatePollSchema.parse(req.body);
@@ -170,7 +170,7 @@ router.patch('/:id', requireAuth, loadMembership, requireRole('update', 'poll'),
   } catch (err) { next(err); }
 });
 
-// ── POST /api/v1/polls/:id/activate — activate a poll (admin) ─────────────
+// ── POST /api/v1/polls/:id/activate - activate a poll (admin) ─────────────
 router.post('/:id/activate', requireAuth, loadMembership, requireRole('update', 'poll'), async (req, res, next) => {
   try {
     const societyId = req.membership?.societyId;
@@ -195,7 +195,7 @@ router.post('/:id/activate', requireAuth, loadMembership, requireRole('update', 
   } catch (err) { next(err); }
 });
 
-// ── POST /api/v1/polls/:id/close — close a poll (admin) ───────────────────
+// ── POST /api/v1/polls/:id/close - close a poll (admin) ───────────────────
 router.post('/:id/close', requireAuth, loadMembership, requireRole('update', 'poll'), async (req, res, next) => {
   try {
     const societyId = req.membership?.societyId;
@@ -220,21 +220,21 @@ router.post('/:id/close', requireAuth, loadMembership, requireRole('update', 'po
   } catch (err) { next(err); }
 });
 
-// ── POST /api/v1/polls/:id/vote — cast a vote (resident) ──────────────────
+// ── POST /api/v1/polls/:id/vote - cast a vote (resident) ──────────────────
 router.post('/:id/vote', requireAuth, loadMembership, async (req, res, next) => {
   try {
     const input = CastVoteSchema.parse(req.body);
     const societyId = req.membership?.societyId;
     if (!societyId) throw new AppError(ErrorCodes.MEMBERSHIP_REQUIRED, 403, 'Active membership required');
 
-    // Look up the user's actual unit IDs from the DB (defensive — not relying on req.membership.unitId)
+    // Look up the user's actual unit IDs from the DB (defensive - not relying on req.membership.unitId)
     const unitIds = await getUserUnitIds(req.user!.id, societyId);
     if (unitIds.length === 0) throw new AppError(ErrorCodes.VALIDATION_ERROR, 400, 'You must have a unit assigned to vote');
     const unitId = unitIds[0]; // Use first assigned unit for voting
 
     const poll = await prisma.poll.findFirst({ where: { id: req.params.id, societyId } });
     if (!poll) throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Poll not found');
-    if (poll.status !== 'ACTIVE') throw new AppError(ErrorCodes.CONFLICT, 409, `Poll is ${poll.status.toLowerCase()} — voting is not allowed`);
+    if (poll.status !== 'ACTIVE') throw new AppError(ErrorCodes.CONFLICT, 409, `Poll is ${poll.status.toLowerCase()} - voting is not allowed`);
     if (new Date() < poll.startsAt) throw new AppError(ErrorCodes.CONFLICT, 409, 'Voting has not started yet');
     if (new Date() > poll.endsAt) throw new AppError(ErrorCodes.CONFLICT, 409, 'Voting has ended');
 
@@ -267,7 +267,7 @@ router.post('/:id/vote', requireAuth, loadMembership, async (req, res, next) => 
   } catch (err) { next(err); }
 });
 
-// ── GET /api/v1/polls/:id/results — get poll results (with visibility check)
+// ── GET /api/v1/polls/:id/results - get poll results (with visibility check)
 router.get('/:id/results', requireAuth, loadMembership, async (req, res, next) => {
   try {
     const societyId = req.membership?.societyId;

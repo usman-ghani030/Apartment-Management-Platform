@@ -3,11 +3,51 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  ArrowLeft, Users, Plus, Search, Shield, Phone, Mail,
-  CheckCircle, XCircle, Edit2, Trash2, X,
+  ArrowLeft, Users, Plus, Search, Shield, Phone, Mail, X, Edit2, Trash2,
+  Power, Sparkles, Wrench, HeartHandshake, CheckCircle2, AlertTriangle,
 } from 'lucide-react';
+import { Select } from '@/components/ui/Select';
+import { Modal, fieldLabel, fieldInput } from '@/components/ui/Modal';
 import { ApiError, apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 import type { StaffResponse, StaffRole } from '@apartment/shared';
+
+// One palette per role, so a card's accent bar, icon chip and pill all agree.
+const ROLE_META: Record<StaffRole, {
+  label: string;
+  icon: React.ElementType;
+  pill: string;
+  bar: string;
+  chip: string;
+}> = {
+  GUARD: {
+    label: 'Guard',
+    icon: Shield,
+    pill: 'bg-accent-50 text-accent-700 ring-accent-200/70',
+    bar: 'bg-accent-500',
+    chip: 'from-accent-500 to-accent-600 ring-accent-200',
+  },
+  CLEANER: {
+    label: 'Cleaner',
+    icon: Sparkles,
+    pill: 'bg-emerald-50 text-emerald-700 ring-emerald-200/70',
+    bar: 'bg-emerald-500',
+    chip: 'from-emerald-500 to-emerald-600 ring-emerald-200',
+  },
+  MAINTENANCE: {
+    label: 'Maintenance',
+    icon: Wrench,
+    pill: 'bg-amber-50 text-amber-700 ring-amber-200/70',
+    bar: 'bg-amber-500',
+    chip: 'from-amber-500 to-amber-600 ring-amber-200',
+  },
+  OTHER: {
+    label: 'Other',
+    icon: HeartHandshake,
+    pill: 'bg-gray-100 text-gray-600 ring-gray-200/70',
+    bar: 'bg-gray-300',
+    chip: 'from-gray-400 to-gray-500 ring-gray-200',
+  },
+};
 
 const ROLE_LABELS: Record<StaffRole, string> = {
   GUARD: 'Guard',
@@ -16,19 +56,8 @@ const ROLE_LABELS: Record<StaffRole, string> = {
   OTHER: 'Other',
 };
 
-const ROLE_COLORS: Record<StaffRole, string> = {
-  GUARD: 'bg-blue-500/10 text-blue-500',
-  CLEANER: 'bg-emerald-500/10 text-emerald-500',
-  MAINTENANCE: 'bg-orange-500/10 text-orange-500',
-  OTHER: 'bg-gray-500/10 text-gray-500',
-};
-
-const ROLE_ICONS: Record<StaffRole, React.ElementType> = {
-  GUARD: Shield,
-  CLEANER: CheckCircle,
-  MAINTENANCE: Edit2,
-  OTHER: Users,
-};
+const FILTERS = ['ALL', 'ACTIVE', 'INACTIVE'] as const;
+type ActiveFilter = (typeof FILTERS)[number];
 
 export default function AdminStaffPage() {
   const router = useRouter();
@@ -37,7 +66,7 @@ export default function AdminStaffPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterActive, setFilterActive] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+  const [filterActive, setFilterActive] = useState<ActiveFilter>('ALL');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -137,261 +166,286 @@ export default function AdminStaffPage() {
     }
   };
 
+  const q = searchQuery.trim().toLowerCase();
   const filteredStaff = staff.filter((s) => {
     if (filterActive === 'ACTIVE' && !s.isActive) return false;
     if (filterActive === 'INACTIVE' && s.isActive) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      return (
-        s.name.toLowerCase().includes(q) ||
-        (s.email && s.email.toLowerCase().includes(q)) ||
-        (s.phone && s.phone.toLowerCase().includes(q)) ||
-        ROLE_LABELS[s.role].toLowerCase().includes(q)
-      );
-    }
-    return true;
+    if (!q) return true;
+    return (
+      s.name.toLowerCase().includes(q) ||
+      (s.email ? s.email.toLowerCase().includes(q) : false) ||
+      (s.phone ? s.phone.toLowerCase().includes(q) : false) ||
+      ROLE_LABELS[s.role].toLowerCase().includes(q)
+    );
   });
+
+  const hasFilters = Boolean(q) || filterActive !== 'ALL';
+  const clearFilters = () => { setSearchQuery(''); setFilterActive('ALL'); };
 
   const stats = {
     total: staff.length,
     active: staff.filter((s) => s.isActive).length,
+    inactive: staff.filter((s) => !s.isActive).length,
     guards: staff.filter((s) => s.role === 'GUARD' && s.isActive).length,
+  };
+
+  const counts: Record<ActiveFilter, number> = {
+    ALL: stats.total,
+    ACTIVE: stats.active,
+    INACTIVE: stats.inactive,
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="animate-spin h-8 w-8 border-2 border-accent-500 border-t-transparent rounded-full" />
+      <div className="min-h-screen bg-[#f6f8fc] text-gray-900 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-accent-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-body-sm text-gray-500">Loading staff...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white text-gray-900">
-      <main className="max-w-6xl mx-auto px-6 py-8">
+    <div className="min-h-screen bg-[#f6f8fc] text-gray-900">
+      <main className="max-w-5xl mx-auto px-6 py-8">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
+        <div className="mb-8 flex flex-wrap items-center gap-4">
           <button
             onClick={() => router.push('/dashboard/admin')}
-            className="p-2 hover:bg-gray-50 rounded-lg transition-colors"
+            aria-label="Back to dashboard"
+            className="rounded-xl p-2 text-gray-500 transition-colors hover:bg-white hover:text-gray-900"
           >
-            <ArrowLeft className="w-5 h-5 text-gray-700" />
+            <ArrowLeft className="w-5 h-5" />
           </button>
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold text-gray-900">Staff Management</h1>
-            <p className="text-gray-700 text-sm">Manage guards, cleaners, and maintenance staff</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-display font-bold text-gray-900">Staff</h1>
+            <p className="mt-0.5 text-body-sm text-gray-500">
+              Guards, cleaners and maintenance staff working in your society.
+            </p>
           </div>
           <button
-            onClick={() => { resetForm(); setShowForm(!showForm); }}
-            className="flex items-center gap-2 bg-accent-600 hover:bg-accent-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-all"
+            onClick={() => { resetForm(); setShowForm(true); }}
+            className="flex items-center gap-2 rounded-xl bg-accent-600 px-4 py-2.5 text-body-sm font-medium text-white shadow-[0_8px_20px_-10px_rgba(37,99,235,0.9)] transition-all hover:bg-accent-700"
           >
-            <Plus className="w-4 h-4" /> Add Staff
+            <Plus className="w-4 h-4" /> Add staff
           </button>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4">
-            <p className="text-xs text-gray-700">Total Staff</p>
-            <p className="text-2xl font-bold mt-1">{stats.total}</p>
-          </div>
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4">
-            <p className="text-xs text-green-500">Active</p>
-            <p className="text-2xl font-bold mt-1">{stats.active}</p>
-          </div>
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4">
-            <p className="text-xs text-blue-500">Active Guards</p>
-            <p className="text-2xl font-bold mt-1">{stats.guards}</p>
-          </div>
-        </div>
-
+        {/* Banners */}
         {error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-3 mb-6">
-            {error}
+          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3.5">
+            <AlertTriangle className="mt-0.5 w-4 h-4 flex-shrink-0 text-red-600" />
+            <p className="flex-1 text-body-sm text-red-700">{error}</p>
+            <button onClick={() => setError('')} aria-label="Dismiss" className="rounded-lg p-1 text-red-400 transition-colors hover:bg-red-100 hover:text-red-700">
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
         {success && (
-          <div className="bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-lg px-4 py-3 mb-6">
-            {success}
+          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5">
+            <CheckCircle2 className="mt-0.5 w-4 h-4 flex-shrink-0 text-emerald-600" />
+            <p className="flex-1 text-body-sm text-emerald-700">{success}</p>
+            <button onClick={() => setSuccess('')} aria-label="Dismiss" className="rounded-lg p-1 text-emerald-500 transition-colors hover:bg-emerald-100 hover:text-emerald-700">
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
 
-        {/* Add/Edit Form */}
-        {showForm && (
-          <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
-            <h2 className="text-lg font-semibold mb-4">
-              {editingId ? 'Edit Staff Member' : 'Add Staff Member'}
-            </h2>
-            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
-                <input
-                  type="text"
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  placeholder="e.g. Ahmed Khan"
-                  required
-                  maxLength={100}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-                <select
-                  value={formRole}
-                  onChange={(e) => setFormRole(e.target.value as StaffRole)}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-accent-500/50"
-                >
-                  {(Object.keys(ROLE_LABELS) as StaffRole[]).map((r) => (
-                    <option key={r} value={r}>{ROLE_LABELS[r]}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email (optional)</label>
-                <input
-                  type="email"
-                  value={formEmail}
-                  onChange={(e) => setFormEmail(e.target.value)}
-                  placeholder="ahmed@example.com"
-                  maxLength={200}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone (optional)</label>
-                <input
-                  type="tel"
-                  value={formPhone}
-                  onChange={(e) => setFormPhone(e.target.value)}
-                  placeholder="+92 300 1234567"
-                  maxLength={20}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50"
-                />
-              </div>
-              <div className="md:col-span-2 flex gap-3">
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="bg-accent-600 hover:bg-accent-700 disabled:opacity-50 text-white rounded-lg px-6 py-2 text-sm font-medium transition-all"
-                >
-                  {submitting ? 'Saving...' : editingId ? 'Update Staff' : 'Add Staff'}
-                </button>
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  className="text-sm text-gray-700 hover:text-gray-900 px-4 py-2"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* Search & Filter */}
-        <div className="flex flex-col sm:flex-row gap-3 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-700" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name, email, phone, or role..."
-              className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-10 pr-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50"
-            />
-          </div>
-          <div className="flex gap-1 bg-gray-50 rounded-lg p-0.5">
-            {(['ALL', 'ACTIVE', 'INACTIVE'] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilterActive(f)}
-                className={`text-xs px-3 py-1.5 rounded-md transition-all whitespace-nowrap ${
-                  filterActive === f ? 'bg-accent-600 text-white' : 'text-gray-700 hover:text-gray-900'
-                }`}
+        {/* Stats */}
+        {staff.length > 0 && (
+          <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {[
+              { icon: Users, label: 'Total staff', value: stats.total, color: 'text-accent-600', bg: 'bg-accent-50' },
+              { icon: CheckCircle2, label: 'Active', value: stats.active, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+              { icon: Power, label: 'Inactive', value: stats.inactive, color: 'text-amber-600', bg: 'bg-amber-50' },
+              { icon: Shield, label: 'Active guards', value: stats.guards, color: 'text-purple-600', bg: 'bg-purple-50' },
+            ].map((stat) => (
+              <div
+                key={stat.label}
+                className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-shadow hover:shadow-md"
               >
-                {f === 'ALL' ? 'All' : f.charAt(0) + f.slice(1).toLowerCase()}
-              </button>
+                <div className="mb-2.5 flex items-center gap-2.5">
+                  <div className={`flex h-8 w-8 items-center justify-center rounded-xl ${stat.bg}`}>
+                    <stat.icon className={`w-4 h-4 ${stat.color}`} />
+                  </div>
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-400">{stat.label}</span>
+                </div>
+                <p className="text-display font-display text-gray-900">{stat.value}</p>
+              </div>
             ))}
           </div>
-        </div>
+        )}
 
-        {/* Staff List */}
-        {filteredStaff.length === 0 ? (
-          <div className="text-center py-20">
-            <Users className="w-12 h-12 text-gray-700 mx-auto mb-4" />
-            <p className="text-gray-700">No staff members found</p>
-            <p className="text-gray-700 text-sm mt-1">
-              {filterActive !== 'ALL' ? 'Try a different filter' : 'Add staff using the button above'}
+        {/* Search & filter */}
+        {staff.length > 0 && (
+          <div className="mb-6 rounded-2xl border border-gray-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="relative flex-1 lg:max-w-md">
+                <Search className="pointer-events-none absolute left-3.5 top-1/2 w-4 h-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by name, email, phone or role..."
+                  aria-label="Search staff"
+                  className="w-full rounded-xl border border-gray-200/80 bg-gray-50 py-2.5 pl-10 pr-10 text-body-sm text-gray-900 placeholder-gray-400 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all focus:border-accent-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-accent-500/10"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    aria-label="Clear search"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="mr-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">Show</span>
+                {FILTERS.map((f) => {
+                  const active = filterActive === f;
+                  return (
+                    <button
+                      key={f}
+                      onClick={() => setFilterActive(f)}
+                      aria-pressed={active}
+                      className={`inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-body-sm font-medium transition-all duration-200 ${
+                        active
+                          ? 'bg-accent-600 text-white shadow-[0_8px_20px_-10px_rgba(37,99,235,1)]'
+                          : 'bg-gray-50 text-gray-600 ring-1 ring-gray-200/80 hover:bg-gray-100 hover:text-gray-900'
+                      }`}
+                    >
+                      {f === 'ALL' ? 'All' : f.charAt(0) + f.slice(1).toLowerCase()}
+                      <span className={`text-[11px] font-semibold tabular-nums ${active ? 'text-white/75' : 'text-gray-400'}`}>
+                        {counts[f]}
+                      </span>
+                    </button>
+                  );
+                })}
+                {hasFilters && (
+                  <button
+                    onClick={clearFilters}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-body-sm font-medium text-gray-500 transition-all hover:border-gray-300 hover:bg-gray-50 hover:text-gray-900"
+                  >
+                    <X className="w-3.5 h-3.5" /> Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Staff list */}
+        {staff.length === 0 ? (
+          <div className="rounded-2xl border border-gray-200/80 bg-white p-16 text-center shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent-50">
+              <Users className="w-7 h-7 text-accent-500" />
+            </div>
+            <h3 className="mb-2 text-title font-display text-gray-900">No staff yet</h3>
+            <p className="mx-auto mb-6 max-w-sm text-body-sm text-gray-500">
+              Add the people who keep the society running. Staff here are records for your roster, they do not get app logins.
             </p>
+            <button
+              onClick={() => { resetForm(); setShowForm(true); }}
+              className="inline-flex items-center gap-2 rounded-xl bg-accent-600 px-5 py-2.5 text-body-sm font-medium text-white shadow-[0_8px_20px_-10px_rgba(37,99,235,0.9)] transition-all hover:bg-accent-700"
+            >
+              <Plus className="w-4 h-4" /> Add staff
+            </button>
+          </div>
+        ) : filteredStaff.length === 0 ? (
+          <div className="rounded-2xl border border-gray-200/80 bg-white p-16 text-center shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100">
+              <Search className="w-7 h-7 text-gray-300" />
+            </div>
+            <h3 className="mb-2 text-title font-display text-gray-900">No staff match these filters</h3>
+            <p className="mb-6 text-body-sm text-gray-500">
+              {q ? `Nothing matched “${searchQuery.trim()}”. ` : ''}Try widening the active filter.
+            </p>
+            <button
+              onClick={clearFilters}
+              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-body-sm font-medium text-gray-700 transition-all hover:bg-gray-50"
+            >
+              <X className="w-4 h-4" /> Clear filters
+            </button>
           </div>
         ) : (
           <div className="space-y-3">
             {filteredStaff.map((s) => {
-              const RoleIcon = ROLE_ICONS[s.role];
+              const meta = ROLE_META[s.role] || ROLE_META.OTHER;
+              const RoleIcon = meta.icon;
               return (
                 <div
                   key={s.id}
-                  className={`bg-white border border-gray-200 rounded-xl shadow-sm p-4 hover:border-accent-500/20 transition-colors ${
-                    !s.isActive ? 'opacity-60' : ''
+                  className={`group relative overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-0.5 hover:border-accent-200 hover:shadow-[0_8px_24px_-8px_rgba(37,99,235,0.18)] ${
+                    s.isActive ? '' : 'bg-gray-50/60'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${ROLE_COLORS[s.role]}`}>
-                        <RoleIcon className="w-5 h-5" />
+                  <span className={`absolute left-0 top-0 bottom-0 w-1 ${s.isActive ? meta.bar : 'bg-gray-300'} rounded-l-2xl transition-all duration-300 group-hover:w-1.5`} aria-hidden="true" />
+
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-4 py-5 pl-6 pr-5">
+                    <div className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${s.isActive ? meta.chip : 'from-gray-300 to-gray-400 ring-gray-200'} ring-1 transition-transform duration-300 group-hover:scale-110`}>
+                      <RoleIcon className="w-5 h-5 text-white" />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <h3 className={`text-title-sm font-display ${s.isActive ? 'text-gray-900' : 'text-gray-500'}`}>{s.name}</h3>
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${meta.pill}`}>
+                          {meta.label}
+                        </span>
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${
+                          s.isActive
+                            ? 'bg-emerald-50 text-emerald-700 ring-emerald-200/70'
+                            : 'bg-gray-100 text-gray-500 ring-gray-200/70'
+                        }`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${s.isActive ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                          {s.isActive ? 'Active' : 'Inactive'}
+                        </span>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-sm font-semibold text-gray-900">{s.name}</span>
-                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${ROLE_COLORS[s.role]}`}>
-                            {ROLE_LABELS[s.role]}
-                          </span>
-                          {!s.isActive && (
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
-                              Inactive
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-700">
+
+                      {(s.email || s.phone) && (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
                           {s.email && (
-                            <span className="flex items-center gap-1">
-                              <Mail className="w-3 h-3" /> {s.email}
+                            <span className="inline-flex items-center gap-1 rounded-md bg-gray-50 px-2 py-0.5 text-caption-xs text-gray-500">
+                              <Mail className="w-3 h-3 text-gray-400" />
+                              {s.email}
                             </span>
                           )}
                           {s.phone && (
-                            <span className="flex items-center gap-1">
-                              <Phone className="w-3 h-3" /> {s.phone}
+                            <span className="inline-flex items-center gap-1 rounded-md bg-gray-50 px-2 py-0.5 text-caption-xs text-gray-500">
+                              <Phone className="w-3 h-3 text-gray-400" />
+                              {s.phone}
                             </span>
                           )}
                         </div>
-                      </div>
+                      )}
                     </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
+
+                    <div className="flex w-full items-center justify-end gap-2 sm:w-auto sm:flex-shrink-0">
                       <button
                         onClick={() => handleEdit(s)}
-                        className="p-2 text-gray-700 hover:text-accent-600 hover:bg-gray-50 rounded-lg transition-colors"
-                        title="Edit"
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-accent-200 bg-accent-50 px-3 py-2 text-body-sm font-medium text-accent-700 transition-all hover:border-accent-300 hover:bg-accent-100"
                       >
-                        <Edit2 className="w-4 h-4" />
+                        <Edit2 className="w-3.5 h-3.5" /> Edit
                       </button>
                       <button
                         onClick={() => handleToggleActive(s)}
-                        className={`p-2 rounded-lg transition-colors ${
+                        className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-body-sm font-medium transition-all ${
                           s.isActive
-                            ? 'text-gray-700 hover:text-orange-600 hover:bg-gray-50'
-                            : 'text-gray-700 hover:text-green-600 hover:bg-gray-50'
+                            ? 'border-gray-200 bg-white text-gray-600 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700'
+                            : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                         }`}
-                        title={s.isActive ? 'Deactivate' : 'Activate'}
                       >
-                        {s.isActive ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                        <Power className="w-3.5 h-3.5" />
+                        {s.isActive ? 'Deactivate' : 'Activate'}
                       </button>
                       <button
                         onClick={() => handleDelete(s.id)}
-                        className="p-2 text-gray-700 hover:text-red-600 hover:bg-gray-50 rounded-lg transition-colors"
-                        title="Delete"
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-body-sm font-medium text-gray-600 transition-all hover:border-red-200 hover:bg-red-50 hover:text-red-600"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" /> Delete
                       </button>
                     </div>
                   </div>
@@ -401,6 +455,100 @@ export default function AdminStaffPage() {
           </div>
         )}
       </main>
+
+      {/* Add / Edit modal */}
+      <Modal
+        open={showForm}
+        onClose={resetForm}
+        icon={editingId ? Edit2 : Users}
+        title={editingId ? 'Edit staff member' : 'Add staff member'}
+        subtitle={editingId
+          ? 'Update this person’s role or contact details.'
+          : 'Keep your roster current. Staff records do not get app logins.'}
+        size="md"
+      >
+        {error && (
+          <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body-sm text-red-700">{error}</div>
+        )}
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label className={fieldLabel} htmlFor="staff-name">Full name</label>
+            <input
+              id="staff-name"
+              type="text"
+              value={formName}
+              onChange={(e) => setFormName(e.target.value)}
+              placeholder="e.g. Ahmed Khan"
+              required
+              maxLength={100}
+              className={fieldInput}
+            />
+          </div>
+
+          <div>
+            <label className={fieldLabel} htmlFor="staff-role">Role</label>
+            <Select value={formRole} onChange={(e) => setFormRole(e.target.value as StaffRole)}>
+              {(Object.keys(ROLE_LABELS) as StaffRole[]).map((r) => (
+                <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+              ))}
+            </Select>
+            <p className="mt-2 text-caption-xs text-gray-400">
+              Guards can be issued gate access from the Security gate page.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">Contact</span>
+              <span className="h-px flex-1 bg-gray-100" aria-hidden="true" />
+              <span className="text-caption-xs text-gray-400">Optional</span>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className={fieldLabel} htmlFor="staff-email">Email</label>
+                <input
+                  id="staff-email"
+                  type="email"
+                  value={formEmail}
+                  onChange={(e) => setFormEmail(e.target.value)}
+                  placeholder="ahmed@example.com"
+                  maxLength={200}
+                  className={fieldInput}
+                />
+              </div>
+              <div>
+                <label className={fieldLabel} htmlFor="staff-phone">Phone</label>
+                <input
+                  id="staff-phone"
+                  type="tel"
+                  value={formPhone}
+                  onChange={(e) => setFormPhone(e.target.value)}
+                  placeholder="+92 300 1234567"
+                  maxLength={20}
+                  className={fieldInput}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-1">
+            <button
+              type="button"
+              onClick={resetForm}
+              className="flex-1 rounded-xl border border-gray-200 bg-white py-2.5 text-body-sm font-medium text-gray-700 transition-all hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex-[1.4] rounded-xl bg-accent-600 py-2.5 text-body-sm font-medium text-white shadow-[0_8px_20px_-10px_rgba(37,99,235,0.9)] transition-all hover:bg-accent-700 disabled:opacity-50"
+            >
+              {submitting ? 'Saving...' : editingId ? 'Save changes' : 'Add staff member'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

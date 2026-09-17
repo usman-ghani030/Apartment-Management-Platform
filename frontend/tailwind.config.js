@@ -103,6 +103,17 @@ module.exports = {
         'pulse-soft': 'pulseSoft 2s ease-in-out infinite',
         'float': 'float 5s ease-in-out infinite',
         'float-delayed': 'float 5s ease-in-out 1.5s infinite',
+        // Subtle loading motion: a soft sweep across skeleton blocks, and a
+        // slow breathe for the brand mark on the route-level loading screens.
+        'shimmer': 'shimmer 1.9s ease-in-out infinite',
+        'breathe': 'breathe 2.6s ease-in-out infinite',
+        'loading-bar': 'loadingBar 1.5s ease-in-out infinite',
+        'gradient-shift': 'gradientShift 8s ease-in-out infinite',
+        'glow-pulse': 'glowPulse 2.5s ease-in-out infinite',
+        'float-slow': 'floatSlow 7s ease-in-out infinite',
+        'shimmer-btn': 'shimmerBtn 2.5s ease-in-out infinite',
+        // Visitor-pass QR sweep: a soft read line travelling down the code plate.
+        'scan': 'scan 2.8s ease-in-out infinite',
       },
       keyframes: {
         fadeIn: {
@@ -128,6 +139,41 @@ module.exports = {
         float: {
           '0%, 100%': { transform: 'translateY(0)' },
           '50%': { transform: 'translateY(-8px)' },
+        },
+        shimmer: {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(100%)' },
+        },
+        breathe: {
+          '0%, 100%': { transform: 'scale(1)', opacity: '1' },
+          '50%': { transform: 'scale(0.94)', opacity: '0.75' },
+        },
+        loadingBar: {
+          '0%': { transform: 'translateX(-100%)', width: '35%' },
+          '50%': { width: '60%' },
+          '100%': { transform: 'translateX(320%)', width: '35%' },
+        },
+        gradientShift: {
+          '0%, 100%': { backgroundPosition: '0% 50%' },
+          '50%': { backgroundPosition: '100% 50%' },
+        },
+        glowPulse: {
+          '0%, 100%': { boxShadow: '0 0 20px rgba(37,99,235,0.3)' },
+          '50%': { boxShadow: '0 0 40px rgba(37,99,235,0.5)' },
+        },
+        floatSlow: {
+          '0%, 100%': { transform: 'translateY(0) translateX(0)' },
+          '33%': { transform: 'translateY(-12px) translateX(4px)' },
+          '66%': { transform: 'translateY(-6px) translateX(-4px)' },
+        },
+        shimmerBtn: {
+          '0%': { backgroundPosition: '-200% center' },
+          '100%': { backgroundPosition: '200% center' },
+        },
+        scan: {
+          '0%': { transform: 'translateY(-10%)', opacity: '0' },
+          '15%, 85%': { opacity: '1' },
+          '100%': { transform: 'translateY(100%)', opacity: '0' },
         },
       },
     },

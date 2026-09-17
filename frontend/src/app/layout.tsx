@@ -3,7 +3,7 @@ import React from 'react';
 import { ThemeProvider } from '@/lib/theme';
 
 export const metadata = {
-  title: 'OmniHome — Apartment Management Platform',
+  title: 'OmniHome - Apartment Management Platform',
   description: 'A premium, modern SaaS platform for residential community and apartment management.',
 };
 
@@ -15,7 +15,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Prevent flash of unstyled theme — set dark class before paint */}
+        {/* Prevent flash of unstyled theme - set dark class before paint */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -33,7 +33,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-screen overflow-x-hidden">
+      <body className="min-h-screen">
         <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>

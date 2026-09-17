@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'crypto';
 
 // ── Reset token generation ──────────────────────────────────────────────────
 // Raw token: 256 bits of CSPRNG entropy, sent in the email link. Only its
-// SHA-256 hash is ever persisted — a DB leak cannot be replayed as a token.
+// SHA-256 hash is ever persisted - a DB leak cannot be replayed as a token.
 export function generateResetToken(): { raw: string; hash: string } {
   const raw = randomBytes(32).toString('base64url');
   return { raw, hash: hashResetToken(raw) };
@@ -43,7 +43,7 @@ export function buildPasswordResetEmail(resetUrl: string): { subject: string; ht
         </a>
       </p>
       <p style="color: #6b7280; font-size: 13px; line-height: 1.6;">
-        If you didn't request this, you can safely ignore this email — your
+        If you didn't request this, you can safely ignore this email - your
         password won't change.
       </p>
     </div>
@@ -60,7 +60,7 @@ export function buildGoogleOnlyAccountEmail(loginUrl: string): { subject: string
       <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
         We received a password reset request for this email, but this OmniHome
         account was created with <strong>Google Sign-In</strong> and has no
-        password set — so there is nothing to reset.
+        password set - so there is nothing to reset.
       </p>
       <p style="text-align: center; margin: 28px 0;">
         <a href="${loginUrl}" style="background: #4f46e5; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">
@@ -72,6 +72,6 @@ export function buildGoogleOnlyAccountEmail(loginUrl: string): { subject: string
       </p>
     </div>
   `;
-  const text = `Your OmniHome account uses Google Sign-In\n\nWe received a password reset request for this email, but this OmniHome account was created with Google Sign-In and has no password set — so there is nothing to reset.\n\nSign in with Google instead: ${loginUrl}`;
+  const text = `Your OmniHome account uses Google Sign-In\n\nWe received a password reset request for this email, but this OmniHome account was created with Google Sign-In and has no password set - so there is nothing to reset.\n\nSign in with Google instead: ${loginUrl}`;
   return { subject, html, text };
 }

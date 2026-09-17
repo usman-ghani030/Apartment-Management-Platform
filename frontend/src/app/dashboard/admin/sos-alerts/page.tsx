@@ -128,8 +128,8 @@ export default function AdminSOSAlertsPage() {
           )}
         </div>
 
-        {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
-        {success && <div className="bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-lg px-4 py-3 mb-6">{success}</div>}
+        {error && <div className="bg-red-500/10 border border-red-500/20 text-red-700 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
+        {success && <div className="bg-green-500/10 border border-green-500/20 text-green-700 text-sm rounded-lg px-4 py-3 mb-6">{success}</div>}
 
         {/* Filter */}
         <div className="flex gap-1 bg-gray-50 rounded-lg p-0.5 mb-6 w-fit">
@@ -231,9 +231,9 @@ export default function AdminSOSAlertsPage() {
         {/* Alerts List */}
         {alerts.length === 0 ? (
           <div className="text-center py-20">
-            <Shield className="w-12 h-12 text-green-500 mx-auto mb-4" />
+            <Shield className="w-12 h-12 text-green-700 mx-auto mb-4" />
             <p className="text-gray-700 font-medium">No SOS alerts</p>
-            <p className="text-gray-700 text-sm mt-1">All clear — no emergency alerts have been triggered</p>
+            <p className="text-gray-700 text-sm mt-1">All clear - no emergency alerts have been triggered</p>
           </div>
         ) : (
           <div className="space-y-3">

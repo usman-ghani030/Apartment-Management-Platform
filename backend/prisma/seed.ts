@@ -14,6 +14,7 @@ async function main() {
   await prisma.sOSAlert.deleteMany();
   await prisma.ticketComment.deleteMany();
   await prisma.ticket.deleteMany();
+  await prisma.vendor.deleteMany();
   await prisma.noticeReadReceipt.deleteMany();
   await prisma.notice.deleteMany();
   await prisma.vote.deleteMany();
@@ -150,6 +151,45 @@ async function main() {
       status: 'ACTIVE',
     },
   });
+
+  // Vendors for the maintenance assignment autocomplete (E.164 mobiles, as the
+  // API stores them).
+  const vendors = await Promise.all([
+    prisma.vendor.create({
+      data: {
+        societyId: society.id,
+        name: 'Sunrise Plumbing',
+        phone: '+923001234567',
+        email: 'plumbing@sunrise-vendors.com',
+      },
+    }),
+    prisma.vendor.create({
+      data: {
+        societyId: society.id,
+        name: 'Karachi Electric Works',
+        phone: '+923214567890',
+      },
+    }),
+  ]);
+  console.log(`  ✓ Vendors: ${vendors.map((v) => `${v.name} (${v.phone})`).join(', ')}`);
+
+  // One unpaid demo invoice so the manual payment-proof flow (ADR 008) can be
+  // exercised without hand-creating an invoice first. Amounts are paisa.
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + 10);
+  const invoice = await prisma.invoice.create({
+    data: {
+      societyId: society.id,
+      unitId: unitA1.id,
+      invoiceNumber: 'INV-DEMO-0001',
+      title: 'Monthly maintenance dues',
+      description: 'Demo invoice for local testing',
+      amount: 250000, // Rs 2,500
+      dueDate,
+      status: 'ISSUED',
+    },
+  });
+  console.log(`  ✓ Invoice: ${invoice.invoiceNumber} (Rs 2,500, due ${dueDate.toDateString()})`);
 
   console.log(`  ✓ Buildings: ${buildingA.name}, ${buildingB.name}`);
   console.log(`  ✓ Units: ${unitA1.unitNumber}, ${unitA2.unitNumber}, ${unitA3.unitNumber}, ${unitB1.unitNumber}, ${unitB2.unitNumber}`);

@@ -164,7 +164,7 @@ router.get('/:id/transfer-check', requireAuth, loadMembership, requireRole('read
     const unit = await prisma.unit.findFirst({ where: { id: req.params.id, societyId, deletedAt: null } });
     if (!unit) throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Unit not found');
 
-    // Find all unpaid invoices (ISSUED, OVERDUE, DISPUTED — not PAID, CANCELLED, DRAFT)
+    // Find all unpaid invoices (ISSUED, OVERDUE, DISPUTED - not PAID, CANCELLED, DRAFT)
     const unpaidInvoices = await prisma.invoice.findMany({
       where: {
         unitId: req.params.id,
@@ -211,7 +211,7 @@ router.get('/:id/transfer-check', requireAuth, loadMembership, requireRole('read
 });
 
 // ── POST /api/v1/units/:id/complete-transfer ───────────────────────────────
-// Complete a unit transfer/move-out — deactivates memberships, clears contacts
+// Complete a unit transfer/move-out - deactivates memberships, clears contacts
 router.post('/:id/complete-transfer', requireAuth, loadMembership, requireRole('update', 'unit'), async (req, res, next) => {
   try {
     const societyId = req.membership!.societyId;
@@ -254,7 +254,7 @@ router.post('/:id/complete-transfer', requireAuth, loadMembership, requireRole('
       },
     });
 
-    // Comprehensive audit log — safety-critical data
+    // Comprehensive audit log - safety-critical data
     await logAudit({
       societyId,
       actorUserId: userId,

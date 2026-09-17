@@ -112,25 +112,108 @@
     transition: background-color 0.2s ease, color 0.2s ease;
   }
 
+  /* Kill horizontal page-drift on mobile. 'clip' (unlike 'hidden') forbids ALL
+     horizontal panning - including the programmatic scroll browsers do when an
+     input gains focus, which is what caused the few-pixel sideways movement.
+     'hidden' is kept first as a fallback for older browsers. */
+  html,
+  body {
+    overflow-x: hidden;
+    overflow-x: clip;
+  }
+
+  /* Stop iOS Safari's focus auto-zoom: focusing an input with font-size < 16px
+     zooms the viewport, and after the keyboard closes the page can stay panned
+     a few pixels sideways. 16px on small screens prevents the zoom entirely. */
+  @media (max-width: 640px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
+
   ::selection {
     background-color: var(--color-selection);
     color: var(--color-text-primary);
   }
 
-  /* Scrollbar */
-  ::-webkit-scrollbar { width: 6px; }
+  /* Scrollbar - slim floating pill, theme-safe (never dark-on-light) */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
-    background: var(--color-border-hover);
-    border-radius: 8px;
+    background: #d6d3d1;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-text-muted);
+    background: #93c5fd;
+    border: 2px solid transparent;
+    background-clip: padding-box;
   }
+  ::-webkit-scrollbar-corner { background: transparent; }
+  scrollbar-width: thin;
+  scrollbar-color: #d6d3d1 transparent;
 }
 
 /* ── Theme-aware utility classes ────────────────────────────────────── */
 @layer components {
+  /* ── Dashboard sidebar nav scroll - slim, inset, accent-tinted ─────── */
+  .sidebar-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #dfe5ee transparent;
+    overscroll-behavior: contain;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar-thumb {
+    background-color: #dfe5ee;
+    border-radius: 999px;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: #93c5fd;
+  }
+
+  /* ── Blue sidebar variant - white thumb on dark track ─────────────────── */
+  /* Blue sidebar scrollbar - wide and bright enough to actually see against
+     the navy panel, with a visible track so it reads as a gutter. */
+  .sidebar-blue-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.45) rgba(255, 255, 255, 0.06);
+    overscroll-behavior: contain;
+  }
+
+  .sidebar-blue-scroll::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+
+  .sidebar-blue-scroll::-webkit-scrollbar-track {
+    background-color: rgba(255, 255, 255, 0.06);
+    border-radius: 999px;
+  }
+
+  .sidebar-blue-scroll::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.45);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  .sidebar-blue-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.75);
+  }
+
   /* ── Cards ────────────────────────────────────────────────────────── */
   .card {
     @apply rounded-xl transition-all duration-200;
@@ -177,6 +260,36 @@
     background-color: rgba(12, 10, 9, 0.85);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
+  }
+
+  /* ── Marketing page canvas ───────────────────────────────────────── */
+  /* A very light cool ground with a whisper-quiet dot texture, so the white
+     cards/sections inside float on the page instead of merging into it.
+     Scoped deliberately to the marketing route only - the dashboards keep
+     their pure white (and their dark theme) untouched. */
+  .page-canvas {
+    background-color: #f6f8fc;
+    background-image: radial-gradient(rgba(100, 130, 180, 0.14) 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-position: 0 0;
+  }
+
+  /* The marketing pages carry no dark: variants and are designed light-only.
+     Pin the theme variables back to their light values when a visitor has a
+     dark theme stored, otherwise the accent tints resolve to translucent blue
+     and the chips/icons on the light canvas become nearly invisible. */
+  .dark .page-canvas {
+    --color-accent-50: #eff6ff;
+    --color-accent-100: #dbeafe;
+    --color-accent-200: #bfdbfe;
+    --color-accent-300: #93c5fd;
+    --color-surface: #ffffff;
+    --color-surface-raised: #fafaf9;
+    --color-surface-overlay: #f5f5f4;
+    --color-text-primary: #1c1917;
+    --color-text-secondary: #57534e;
+    --color-border: #e7e5e4;
+    --color-border-hover: #d6d3d1;
   }
 
   /* ── Status dots ─────────────────────────────────────────────────── */

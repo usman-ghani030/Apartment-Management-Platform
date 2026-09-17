@@ -5,14 +5,14 @@ import { generateRecurringInvoices } from '../lib/recurring-billing';
 import { generatePlatformInvoices, markOverduePlatformInvoices } from '../lib/platform-billing';
 
 /**
- * Background job infrastructure (docs/PLAN.md §5 — one queue module owns all jobs).
+ * Background job infrastructure (docs/PLAN.md §5 - one queue module owns all jobs).
  *
  * Automated Dues Reminders: a repeatable daily job that finds unpaid invoices
  * coming due within each society's configured window and fires a DUE_REMINDER
  * notification for each (invoice, dueDate) pair exactly once.
  *
  * Resilience: if REDIS_URL is not set or Redis is unreachable, the queue starts
- * in a safe "disabled" mode — the API keeps working normally, the job simply
+ * in a safe "disabled" mode - the API keeps working normally, the job simply
  * does not run. Admins can still trigger a run manually via
  * POST /api/v1/settings/run-reminders.
  */
@@ -41,7 +41,7 @@ function getConnection(): IORedis | null {
       if (!warned) {
         warned = true;
         console.error(
-          `[Queue] Redis connection error (${err instanceof Error ? err.message : err}) — automated due reminders disabled; the API keeps working. Fix REDIS_URL and restart to re-enable.`
+          `[Queue] Redis connection error (${err instanceof Error ? err.message : err}) - automated due reminders disabled; the API keeps working. Fix REDIS_URL and restart to re-enable.`
         );
       }
     });
@@ -67,7 +67,7 @@ export async function startReminderQueue(): Promise<void> {
   try {
     const conn = getConnection();
     if (!conn) {
-      console.log('[Queue] REDIS_URL not set — automated due reminders disabled (manual trigger still available)');
+      console.log('[Queue] REDIS_URL not set - automated due reminders disabled (manual trigger still available)');
       return;
     }
 
@@ -83,7 +83,7 @@ export async function startReminderQueue(): Promise<void> {
     );
 
     worker.on('completed', (job) => {
-      console.log(`[Queue] due-reminders completed — scanned ${job.returnvalue?.scanned ?? 0}, reminded ${job.returnvalue?.reminded ?? 0}`);
+      console.log(`[Queue] due-reminders completed - scanned ${job.returnvalue?.scanned ?? 0}, reminded ${job.returnvalue?.reminded ?? 0}`);
     });
     worker.on('failed', (job, err) => {
       console.error(`[Queue] due-reminders failed: ${err instanceof Error ? err.message : err}`);
@@ -92,12 +92,12 @@ export async function startReminderQueue(): Promise<void> {
     console.log(`[Queue] Automated due reminders scheduled (${CRON}, ${process.env.TZ || 'UTC'})`);
   } catch (err) {
     console.error(
-      `[Queue] Could not start due reminders (${err instanceof Error ? err.message : err}) — automated job disabled; API unaffected`
+      `[Queue] Could not start due reminders (${err instanceof Error ? err.message : err}) - automated job disabled; API unaffected`
     );
   }
 }
 
-/** Graceful shutdown — closes the worker and queue so in-flight jobs finish. */
+/** Graceful shutdown - closes the worker and queue so in-flight jobs finish. */
 export async function stopReminderQueue(): Promise<void> {
   try {
     await worker?.close();
@@ -141,7 +141,7 @@ export async function startBillingQueue(): Promise<void> {
   try {
     const conn = getConnection();
     if (!conn) {
-      console.log('[Queue] REDIS_URL not set — recurring billing disabled (manual trigger still available)');
+      console.log('[Queue] REDIS_URL not set - recurring billing disabled (manual trigger still available)');
       return;
     }
 
@@ -155,7 +155,7 @@ export async function startBillingQueue(): Promise<void> {
     );
 
     billingWorker.on('completed', (job) => {
-      console.log(`[Queue] recurring-billing completed — created ${job.returnvalue?.created ?? 0}, skipped ${job.returnvalue?.skipped ?? 0}, errors ${job.returnvalue?.errors ?? 0}`);
+      console.log(`[Queue] recurring-billing completed - created ${job.returnvalue?.created ?? 0}, skipped ${job.returnvalue?.skipped ?? 0}, errors ${job.returnvalue?.errors ?? 0}`);
     });
     billingWorker.on('failed', (job, err) => {
       console.error(`[Queue] recurring-billing failed: ${err instanceof Error ? err.message : err}`);
@@ -164,7 +164,7 @@ export async function startBillingQueue(): Promise<void> {
     console.log(`[Queue] Recurring billing scheduled (${BILLING_CRON}, ${process.env.TZ || 'UTC'})`);
   } catch (err) {
     console.error(
-      `[Queue] Could not start recurring billing (${err instanceof Error ? err.message : err}) — automated job disabled; API unaffected`
+      `[Queue] Could not start recurring billing (${err instanceof Error ? err.message : err}) - automated job disabled; API unaffected`
     );
   }
 }
@@ -220,7 +220,7 @@ export async function startPlatformBillingQueue(): Promise<void> {
   try {
     const conn = getConnection();
     if (!conn) {
-      console.log('[Queue] REDIS_URL not set — platform billing jobs disabled (manual trigger still available)');
+      console.log('[Queue] REDIS_URL not set - platform billing jobs disabled (manual trigger still available)');
       return;
     }
 
@@ -232,7 +232,7 @@ export async function startPlatformBillingQueue(): Promise<void> {
       { name: PLATFORM_BILLING_JOB_NAME, data: {} }
     );
     platformBillingWorker.on('completed', (job) => {
-      console.log(`[Queue] platform-billing completed — created ${job.returnvalue?.created ?? 0}, skipped ${job.returnvalue?.skipped ?? 0}`);
+      console.log(`[Queue] platform-billing completed - created ${job.returnvalue?.created ?? 0}, skipped ${job.returnvalue?.skipped ?? 0}`);
     });
     platformBillingWorker.on('failed', (_job, err) => {
       console.error(`[Queue] platform-billing failed: ${err instanceof Error ? err.message : err}`);
@@ -246,7 +246,7 @@ export async function startPlatformBillingQueue(): Promise<void> {
       { name: PLATFORM_OVERDUE_JOB_NAME, data: {} }
     );
     platformOverdueWorker.on('completed', (job) => {
-      console.log(`[Queue] platform-overdue completed — markedOverdue ${job.returnvalue?.markedOverdue ?? 0}`);
+      console.log(`[Queue] platform-overdue completed - markedOverdue ${job.returnvalue?.markedOverdue ?? 0}`);
     });
     platformOverdueWorker.on('failed', (_job, err) => {
       console.error(`[Queue] platform-overdue failed: ${err instanceof Error ? err.message : err}`);
@@ -255,7 +255,7 @@ export async function startPlatformBillingQueue(): Promise<void> {
     console.log(`[Queue] Platform billing scheduled (${PLATFORM_BILLING_CRON}); overdue check scheduled (${PLATFORM_OVERDUE_CRON}, ${process.env.TZ || 'UTC'})`);
   } catch (err) {
     console.error(
-      `[Queue] Could not start platform billing jobs (${err instanceof Error ? err.message : err}) — automated jobs disabled; API unaffected`
+      `[Queue] Could not start platform billing jobs (${err instanceof Error ? err.message : err}) - automated jobs disabled; API unaffected`
     );
   }
 }

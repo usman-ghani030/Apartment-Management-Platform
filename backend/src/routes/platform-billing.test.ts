@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
 
-// Hermetic: mock prisma — no real DB.
+// Hermetic: mock prisma - no real DB.
 vi.mock('../lib/prisma', () => ({
   prisma: {
     user: { findUnique: vi.fn() },
@@ -96,7 +96,7 @@ afterAll(async () => {
   // no handles to close (fully mocked)
 });
 
-// ── GET /status — free tier + estimated fee ────────────────────────────────────────
+// ── GET /status - free tier + estimated fee ────────────────────────────────────────
 describe('GET /api/v1/platform-billing/status', () => {
   it('reports free tier with zero estimated fee for ≤15 units', async () => {
     mockAuthFor(adminMembershipS1, 'u-admin1');
@@ -143,7 +143,7 @@ describe('GET /api/v1/platform-billing/status', () => {
   });
 });
 
-// ── GET / — society-scoped view ─────────────────────────────────────────────
+// ── GET / - society-scoped view ─────────────────────────────────────────────
 describe('GET /api/v1/platform-billing', () => {
   it('returns only the caller’s own society’s invoices', async () => {
     mockAuthFor(adminMembershipS1, 'u-admin1');
@@ -193,7 +193,7 @@ describe('GET /api/v1/platform-billing', () => {
 
 // ── Cross-tenant + role gates on ops endpoints ──────────────────────────────
 describe('platform ops authorization', () => {
-  it('GET /all — a Committee Admin gets 403 (super-admin-only surface)', async () => {
+  it('GET /all - a Committee Admin gets 403 (super-admin-only surface)', async () => {
     mockAuthFor(adminMembershipS1, 'u-admin1');
     const res = await request(app)
       .get('/api/v1/platform-billing/all')
@@ -202,7 +202,7 @@ describe('platform ops authorization', () => {
     expect(res.body.error.code).toBe('FORBIDDEN');
   });
 
-  it('GET /all — a Super Admin membership gets all societies’ invoices', async () => {
+  it('GET /all - a Super Admin membership gets all societies’ invoices', async () => {
     mockAuthFor(superAdminMembership, 'u-super');
     (prisma.platformInvoice.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
       invoiceRow(),
@@ -229,7 +229,7 @@ describe('platform ops authorization', () => {
     expect(res.status).toBe(403);
   });
 
-  it('GET /custom-quotes — Committee Admin gets 403', async () => {
+  it('GET /custom-quotes - Committee Admin gets 403', async () => {
     mockAuthFor(adminMembershipS1, 'u-admin1');
     const res = await request(app)
       .get('/api/v1/platform-billing/custom-quotes')
@@ -237,7 +237,7 @@ describe('platform ops authorization', () => {
     expect(res.status).toBe(403);
   });
 
-  it('POST /run-generation — Committee Admin gets 403', async () => {
+  it('POST /run-generation - Committee Admin gets 403', async () => {
     mockAuthFor(adminMembershipS1, 'u-admin1');
     const res = await request(app)
       .post('/api/v1/platform-billing/run-generation')
@@ -246,7 +246,7 @@ describe('platform ops authorization', () => {
     expect(res.status).toBe(403);
   });
 
-  it('POST /run-overdue-check — Committee Admin gets 403', async () => {
+  it('POST /run-overdue-check - Committee Admin gets 403', async () => {
     mockAuthFor(adminMembershipS1, 'u-admin1');
     const res = await request(app)
       .post('/api/v1/platform-billing/run-overdue-check')
@@ -254,7 +254,7 @@ describe('platform ops authorization', () => {
     expect(res.status).toBe(403);
   });
 
-  it('PATCH /:id/mark-paid — Committee Admin gets 403 (the only path to PAID is super-admin)', async () => {
+  it('PATCH /:id/mark-paid - Committee Admin gets 403 (the only path to PAID is super-admin)', async () => {
     mockAuthFor(adminMembershipS1, 'u-admin1');
     const res = await request(app)
       .patch('/api/v1/platform-billing/pi-1/mark-paid')

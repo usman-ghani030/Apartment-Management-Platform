@@ -6,9 +6,10 @@ import {
   Building2, Users, FileText, CreditCard, LogOut, Bell,
   CalendarRange, BarChart3, Folder, Clock, Home, UserPlus,
   QrCode, Scan, Menu, X, Package, Shield, PieChart, LayoutDashboard,
-  Contact, AlertTriangle, HelpCircle, Landmark,
+  Contact, AlertTriangle, HelpCircle, Landmark, BadgeCheck,
 } from 'lucide-react';
 import { auth, ApiError, apiGet } from '@/lib/api';
+import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import type { AuthResponse } from '@apartment/shared';
 
 // ── Shared types ─────────────────────────────────────────────────────────
@@ -92,6 +93,7 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
     label: 'Finance & Records',
     items: [
       { icon: CreditCard, label: 'Invoices', href: '/dashboard/admin/invoices' },
+      { icon: BadgeCheck, label: 'Payment proofs', href: '/dashboard/admin/payment-proofs' },
       { icon: Landmark, label: 'Platform billing', href: '/dashboard/admin/platform-billing' },
       { icon: BarChart3, label: 'Polls', href: '/dashboard/admin/polls' },
       { icon: Folder, label: 'Documents', href: '/dashboard/admin/documents' },
@@ -140,36 +142,35 @@ function AdminSidebar({
     <>
       {/* Mobile backdrop */}
       {open && (
-        <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={onClose} />
+        <div className="fixed inset-0 z-40 bg-gray-900/40 backdrop-blur-sm lg:hidden" onClick={onClose} />
       )}
 
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 z-50 h-full w-64 bg-white border-r border-gray-200 flex flex-col transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+        className={`fixed left-0 top-0 z-50 flex h-full w-72 flex-col bg-gradient-to-b from-[#1e3a5f] via-[#1a3358] to-[#142847] transition-transform duration-300 ease-in-out lg:top-20 lg:h-[calc(100%-5rem)] lg:translate-x-0 ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {/* Logo */}
-        <div className="h-14 flex items-center gap-3 px-5 border-b border-gray-200 flex-shrink-0">
-          {/* logo3.png is square with transparent padding — crop it so the wrap-around
-              padding doesn't eat the sidebar width and cramp the wordmark */}
-          <img src="/logo3.png" alt="OmniHome" className="h-[110px] w-[72px] object-cover object-center flex-shrink-0" />
-          <span className="text-title-sm font-display text-gray-900 whitespace-nowrap">
-            Omni<span className="text-accent-600">Home</span>
-          </span>
-          <button onClick={onClose} className="ml-auto p-1 rounded-lg hover:bg-gray-50 lg:hidden">
-            <X className="w-4 h-4 text-gray-700" />
+        {/* The brand lives in the top bar now, so the rail starts straight into
+            its nav. The close button is only needed for the mobile drawer. */}
+        <div className="flex flex-shrink-0 items-center justify-between px-4 pt-4 lg:hidden">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">Menu</span>
+          <button onClick={onClose} aria-label="Close menu" className="rounded-lg p-1.5 text-white/50 transition-colors hover:bg-white/10 hover:text-white">
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Nav groups */}
-        <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-5">
+        <nav className="sidebar-blue-scroll flex-1 overflow-y-auto px-3 py-4 space-y-6 lg:py-5">
           {NAV_SECTIONS.map((section) => (
             <div key={section.label}>
-              <span className="text-caption-xs font-semibold uppercase tracking-widest text-gray-400 block px-2 mb-2">
-                {section.label}
-              </span>
-              <div className="space-y-0.5">
+              <div className="flex items-center gap-2.5 px-2 mb-2.5">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/50">
+                  {section.label}
+                </span>
+                <span className="h-px flex-1 bg-white/10" aria-hidden="true" />
+              </div>
+              <div className="space-y-1">
                 {section.items.map((item) => {
                   const badge = statBadges[item.label];
                   const isActive = currentPath === item.href;
@@ -177,19 +178,27 @@ function AdminSidebar({
                     <button
                       key={item.label}
                       onClick={() => handleNav(item.href)}
-                      className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-body-sm font-medium transition-all text-left focus-visible:ring-2 focus-visible:ring-accent-500/50 focus-visible:ring-offset-2 ${
+                      aria-current={isActive ? 'page' : undefined}
+                      className={`group relative flex w-full items-center gap-3 pl-3.5 pr-2.5 py-2.5 rounded-xl text-body font-medium text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-0 ${
                         isActive
-                          ? 'bg-accent-50 text-accent-600'
-                          : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                          ? 'bg-white text-accent-700 shadow-[0_2px_10px_-2px_rgba(4,20,45,0.45)]'
+                          : 'text-white hover:bg-white/10 hover:text-white'
                       }`}
                     >
-                      <item.icon className={`w-4.5 h-4.5 flex-shrink-0 ${isActive ? 'text-accent-600' : 'text-gray-700'}`} />
-                      <span className="flex-1 truncate">{item.label}</span>
+                      {/* Active rail */}
+                      <span
+                        className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-full bg-accent-600 transition-all duration-300 ${isActive ? 'h-5 opacity-100' : 'h-0 opacity-0'}`}
+                        aria-hidden="true"
+                      />
+                      <item.icon className={`w-4.5 h-4.5 flex-shrink-0 transition-colors duration-200 ${isActive ? 'text-accent-600' : 'text-white/60 group-hover:text-white'}`} />
+                      <span className="flex-1 truncate transition-transform duration-200 group-hover:translate-x-0.5">
+                        {item.label}
+                      </span>
                       {badge && (
-                        <span className={`text-caption-xs font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                        <span className={`text-[11px] font-semibold tabular-nums px-2 py-0.5 rounded-full flex-shrink-0 transition-colors ${
                           isActive
-                            ? 'bg-accent-100 text-accent-600'
-                            : 'bg-gray-100 text-gray-700'
+                            ? 'bg-accent-100 text-accent-700'
+                            : 'bg-white/10 text-white/70 group-hover:bg-white/15 group-hover:text-white/90'
                         }`}>
                           {badge}
                         </span>
@@ -203,8 +212,12 @@ function AdminSidebar({
         </nav>
 
         {/* Sidebar footer */}
-        <div className="border-t border-gray-200 px-3 py-3 flex-shrink-0">
-          <span className="text-caption-xs text-gray-400 block px-2">OmniHome v1.0</span>
+        <div className="flex-shrink-0 border-t border-white/10 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]" aria-hidden="true" />
+            <span className="text-caption-xs font-medium text-white/50">OmniHome</span>
+            <span className="ml-auto font-mono text-[11px] font-semibold tracking-[0.18em] text-white/30">v1.0</span>
+          </div>
         </div>
       </aside>
     </>
@@ -238,7 +251,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         }
         if (cancelled) return;
         setUser(userData);
-        // Unblock rendering as soon as auth resolves — inner pages load instantly,
+        // Unblock rendering as soon as auth resolves - inner pages load instantly,
         // sidebar badges populate as soon as the stats fetch below settles.
         setAuthLoading(false);
 
@@ -330,11 +343,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-accent-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-body-sm text-gray-700">Loading dashboard...</p>
-        </div>
+      <div className="min-h-screen bg-[#f6f8fc]">
+        <LoadingScreen label="Loading dashboard" hint="Checking your membership and society data." />
       </div>
     );
   }
@@ -351,24 +361,37 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         />
 
         {/* Top Bar */}
-        <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200 lg:ml-64">
-          <div className="h-20 flex items-center justify-between px-4">
-            <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-30 border-b border-gray-200 bg-white/80 backdrop-blur-md">
+          <div className="flex h-20 items-center justify-between gap-4 px-4">
+            <div className="flex min-w-0 items-center gap-3">
               {/* Hamburger for mobile */}
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="p-2 rounded-lg hover:bg-gray-50 transition-colors lg:hidden"
+                aria-label="Open menu"
+                className="rounded-lg p-2 transition-colors hover:bg-gray-50 lg:hidden"
               >
                 <Menu className="w-4.5 h-4.5 text-gray-700" />
               </button>
-              {/* Brand lives in the sidebar — this is the society context only, so
-                  the dashboard doesn't show two logos at once. */}
-              <button onClick={() => router.push('/')} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-                <div className="text-left">
-                  <p className="text-body-sm font-semibold text-gray-900">{society?.societyName || 'Dashboard'}</p>
-                  <p className="text-caption-xs text-gray-700">Committee Admin</p>
-                </div>
+
+              {/* Brand - part of the top bar, matching the landing page navbar */}
+              <button
+                onClick={() => router.push('/')}
+                title="Go to the OmniHome landing page"
+                className="flex flex-shrink-0 items-center gap-2.5 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40"
+              >
+                <img src="/logo3.png" alt="OmniHome" className="h-12 w-auto object-contain" />
+                <span className="hidden text-title-sm font-display text-gray-900 sm:inline">
+                  Omni<span className="text-accent-600">Home</span>
+                </span>
               </button>
+
+              <span className="mx-1 hidden h-9 w-px bg-gray-200 sm:block" aria-hidden="true" />
+
+              {/* Society context */}
+              <div className="hidden min-w-0 text-left md:block">
+                <p className="truncate text-body-sm font-semibold text-gray-900">{society?.societyName || 'Dashboard'}</p>
+                <p className="text-caption-xs text-gray-500">Committee Admin</p>
+              </div>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="hidden sm:block text-caption text-gray-700">{user?.user.name}</span>
@@ -385,7 +408,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Main Content */}
-        <main className="lg:ml-64">{children}</main>
+        <main className="lg:ml-72">{children}</main>
       </div>
     </AdminShellContext.Provider>
   );

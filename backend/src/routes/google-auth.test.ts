@@ -12,7 +12,7 @@ vi.mock('../lib/prisma', () => ({
   },
 }));
 
-// Mock Google token verification — route behavior is what we test here.
+// Mock Google token verification - route behavior is what we test here.
 vi.mock('../lib/google-auth', () => ({
   verifyGoogleIdToken: vi.fn(),
 }));
@@ -75,7 +75,7 @@ afterAll(() => {
   vi.restoreAllMocks();
 });
 
-describe('POST /api/v1/auth/google — signin mode', () => {
+describe('POST /api/v1/auth/google - signin mode', () => {
   it('links an existing user by verified email and logs them in (200, linked=true)', async () => {
     googleVerify.mockResolvedValue(googleProfile());
     (prisma.user.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(existingUserRow());
@@ -147,7 +147,7 @@ describe('POST /api/v1/auth/google — signin mode', () => {
 
   it('rejects an invalid/tampered Google ID token (401)', async () => {
     // The real verifyGoogleIdToken wraps google-auth-library failures into an
-    // AppError(401) — see src/lib/google-auth.test.ts. This test asserts the
+    // AppError(401) - see src/lib/google-auth.test.ts. This test asserts the
     // route surfaces that contract (see the lib test for the wrapping itself).
     googleVerify.mockRejectedValue(
       new AppError(ErrorCodes.INVALID_CREDENTIALS, 401, 'Invalid or expired Google token')
@@ -191,7 +191,7 @@ describe('POST /api/v1/auth/google — signin mode', () => {
   });
 });
 
-describe('POST /api/v1/auth/google — signup mode (tenant onboarding)', () => {
+describe('POST /api/v1/auth/google - signup mode (tenant onboarding)', () => {
   const signupBody = {
     idToken: 'google-jwt-token',
     mode: 'signup',
@@ -305,7 +305,7 @@ describe('POST /api/v1/auth/google — signup mode (tenant onboarding)', () => {
   });
 });
 
-describe('GET /api/v1/auth/google/config — runtime client ID fallback', () => {
+describe('GET /api/v1/auth/google/config - runtime client ID fallback', () => {
   const original = process.env.GOOGLE_CLIENT_ID;
 
   afterAll(() => {

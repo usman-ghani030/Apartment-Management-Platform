@@ -72,7 +72,7 @@ async function tryRefreshAccessToken(): Promise<string | null> {
         });
         const json = await res.json();
         if (json.error || !json.data?.accessToken) {
-          // Refresh failed — clear both tokens so callers treat the user as logged out
+          // Refresh failed - clear both tokens so callers treat the user as logged out
           setAuthToken(null);
           setRefreshToken(null);
           return null;
@@ -97,11 +97,21 @@ interface RequestOptions {
   headers?: Record<string, string>;
 }
 
-async function request<T>(
+/**
+ * Same request pipeline as request(), but keeps the `nextCursor` that paginated
+ * list endpoints return. request() deliberately returns only `data`, which is
+ * what almost every caller wants.
+ */
+export interface PaginatedResult<T> {
+  data: T[];
+  nextCursor: string | null;
+}
+
+async function requestEnvelope<T>(
   path: string,
   options: RequestOptions = {},
   allowRefresh = true
-): Promise<T> {
+): Promise<ApiResponse<T> & { nextCursor?: string | null }> {
   const { method = 'GET', body, headers = {} } = options;
 
   // Include auth token if available (works cross-origin without cookies)
@@ -131,16 +141,25 @@ async function request<T>(
     const newToken = await tryRefreshAccessToken();
     if (newToken) {
       headers['x-access-token'] = newToken;
-      return request<T>(path, options, false);
+      return requestEnvelope<T>(path, options, false);
     }
   }
 
-  const json: ApiResponse<T> = await res.json();
+  const json: ApiResponse<T> & { nextCursor?: string | null } = await res.json();
 
   if (json.error) {
     throw new ApiError(json.error.code, json.error.message, res.status);
   }
 
+  return json;
+}
+
+async function request<T>(
+  path: string,
+  options: RequestOptions = {},
+  allowRefresh = true
+): Promise<T> {
+  const json = await requestEnvelope<T>(path, options, allowRefresh);
   return json.data as T;
 }
 
@@ -158,6 +177,16 @@ export class ApiError extends Error {
 // ── Convenience HTTP Methods ───────────────────────────────────────────────
 export function apiGet<T>(path: string): Promise<T> {
   return request<T>(path);
+}
+
+/**
+ * Cursor-paginated GET: returns the page plus `nextCursor` (null on the last
+ * page). List endpoints answer `{ data, nextCursor, error }` per the API
+ * conventions - this is the one helper that surfaces the cursor.
+ */
+export async function apiGetPage<T>(path: string): Promise<PaginatedResult<T>> {
+  const json = await requestEnvelope<T[]>(path);
+  return { data: (json.data as T[]) ?? [], nextCursor: json.nextCursor ?? null };
 }
 
 export function apiPost<T>(path: string, body?: unknown): Promise<T> {
@@ -241,7 +270,7 @@ export const auth = {
     return result as AuthResponse;
   },
 
-  // Google Sign-In — `linked` is true when the Google account was just linked to
+  // Google Sign-In - `linked` is true when the Google account was just linked to
   // an existing password-based account (frontend shows a confirmation message).
   googleSignIn: async (idToken: string) => {
     const result = await request<AuthResponse & { accessToken?: string; refreshToken?: string; linked?: boolean }>('/api/v1/auth/google', {
@@ -257,7 +286,7 @@ export const auth = {
     return result as AuthResponse & { linked?: boolean };
   },
 
-  // Google Sign-Up — creates a new Society + first admin, same as password signup
+  // Google Sign-Up - creates a new Society + first admin, same as password signup
   googleSignUp: async (idToken: string, societyName: string, societySlug: string) => {
     const result = await request<AuthResponse & { accessToken?: string; refreshToken?: string }>('/api/v1/auth/google', {
       method: 'POST',
@@ -304,7 +333,7 @@ export const auth = {
 };
 
 // ── Vendor Portal API (public) ───────────────────────────────────────────────
-// Vendors have no accounts — the secret token in their emailed link is the only
+// Vendors have no accounts - the secret token in their emailed link is the only
 // credential, so these calls are unauthenticated by design.
 export const vendorPortal = {
   getTicket: (token: string) =>
@@ -318,7 +347,7 @@ export const vendorPortal = {
 };
 
 // ── Platform Billing API (Phase 9, ADR 006) ─────────────────────────────────
-// Societies paying the PLATFORM — separate from resident dues (auth/invoices).
+// Societies paying the PLATFORM - separate from resident dues (auth/invoices).
 export const platformBilling = {
   /** Own society's current standing: unit count, free-tier flag, estimated fee. */
   getStatus: () =>

@@ -1,4 +1,4 @@
-# Manual Test Guide — Phase 9 Platform Billing (Societies Paying the Platform)
+# Manual Test Guide - Phase 9 Platform Billing (Societies Paying the Platform)
 
 **Feature:** every active society gets a monthly platform invoice based on its active unit count, calculated **progressively** (ADR 006). Committee Admins see a read-only billing page with payment instructions; a **SUPER_ADMIN** membership gets the platform-ops panels (all societies, mark-as-paid, custom-quote flags, run controls). Resident dues (Invoices page) are a completely separate system.
 
@@ -37,7 +37,7 @@ Log in as the admin you promoted → **Platform billing** (sidebar, under Financ
 Expected message, e.g.:
 
 ```
-DRY RUN — nothing was written. Societies scanned: 2, invoices would be created: 1,
+DRY RUN - nothing was written. Societies scanned: 2, invoices would be created: 1,
 free-tier skipped: 0, already existing: 0, custom-quote flags: 0
 ```
 
@@ -48,7 +48,7 @@ docker exec apartment-postgres psql -U postgres -d apartment_management -c \
   'SELECT count(*) FROM "PlatformInvoice";'
 ```
 
-Expected: `0` (or whatever existed before — unchanged).
+Expected: `0` (or whatever existed before - unchanged).
 
 ---
 
@@ -73,7 +73,7 @@ On the same page, **Your society's invoices** now shows a card: period (e.g. "Se
 | 201 | Rs 2,508 |
 | 500 | Rs 4,900 |
 
-The expanded breakdown must show the bands separately (e.g. for 100 units: *Units 1–15 free, Units 16–50 → Rs 700, Units 51–100 → Rs 600, total Rs 1,300*) — **not** one flat rate × unit count.
+The expanded breakdown must show the bands separately (e.g. for 100 units: *Units 1–15 free, Units 16–50 → Rs 700, Units 51–100 → Rs 600, total Rs 1,300*) - **not** one flat rate × unit count.
 
 **Idempotency:** click **Generate for this month** again → `already existing: N`, `created: 0`, and no duplicate rows:
 
@@ -141,7 +141,7 @@ Restore the SUPER_ADMIN role (step 0 SQL) if you want to keep testing as ops.
 
 ## 5. Overdue handling + reminder email
 
-Create an overdue invoice the honest way — set its due date in the past, then run the check:
+Create an overdue invoice the honest way - set its due date in the past, then run the check:
 
 ```bash
 docker exec apartment-postgres psql -U postgres -d apartment_management -c "
@@ -151,7 +151,7 @@ WHERE status = 'PENDING';"
 
 Click **Run overdue check** → message reports `marked overdue: N, reminder emails sent: N`. The invoice badge becomes `OVERDUE`. The Committee Admin inbox (GMAIL_USER inbox, or any admin email if you're testing delivery to a different address) receives *"Action needed: platform invoice … is overdue"* mentioning the amount, period, and that access is not restricted.
 
-No feature of the society is gated by this state (ADR 006) — verify the society's app still works normally (post a notice, raise a ticket).
+No feature of the society is gated by this state (ADR 006) - verify the society's app still works normally (post a notice, raise a ticket).
 
 **Idempotency:** run the check again → `marked overdue: 0` (already-OVERDUE invoices aren't re-processed, no duplicate emails).
 
@@ -161,7 +161,7 @@ If nothing arrives: check `docker logs apartment-backend --since 5m | grep -i "p
 
 ## 6. Committee Admin read-only view (final state check)
 
-As a plain Committee Admin (not super admin): **Platform billing** shows the status banner (free tier / estimated fee), payment instructions with the clearly-marked `[BANK DETAILS PLACEHOLDER — TO BE PROVIDED]` (only when billable), the society's invoice cards with expandable calculations, and **no** run buttons / mark-paid buttons / other societies' data. The resident dashboard has **no** Platform billing link and `GET /api/v1/platform-billing` with a resident token returns 403.
+As a plain Committee Admin (not super admin): **Platform billing** shows the status banner (free tier / estimated fee), payment instructions with the clearly-marked `[BANK DETAILS PLACEHOLDER - TO BE PROVIDED]` (only when billable), the society's invoice cards with expandable calculations, and **no** run buttons / mark-paid buttons / other societies' data. The resident dashboard has **no** Platform billing link and `GET /api/v1/platform-billing` with a resident token returns 403.
 
 ---
 
@@ -169,10 +169,10 @@ As a plain Committee Admin (not super admin): **Platform billing** shows the sta
 
 With the seeded society at 5 units (and no SUPER_ADMIN role), open **Platform billing**:
 
-- Green banner: **"You're on the free tier 🎉"** — shows the unit count (5), the free threshold (15),
+- Green banner: **"You're on the free tier 🎉"** - shows the unit count (5), the free threshold (15),
   that every feature is included, and what happens if the society grows past 15 units.
-- The **How to pay** block is **hidden** — there is nothing to pay on the free tier.
-- Invoice list: *"Nothing to pay — 5 of your 15 free units are in use."*
+- The **How to pay** block is **hidden** - there is nothing to pay on the free tier.
+- Invoice list: *"Nothing to pay - 5 of your 15 free units are in use."*
 - No Platform operations panels (those are super-admin only).
 
 Add >15 units (step 3's SQL with `generate_series(1, 45)` for 50 total) and reload:

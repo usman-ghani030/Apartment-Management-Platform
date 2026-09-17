@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 
 /**
- * PaymentProvider — the single abstraction for payment gateways (ADR 003).
+ * PaymentProvider - the single abstraction for payment gateways (ADR 003).
  *
  * No route handler may call the Safepay API directly; everything goes through
  * this interface so a future provider swap is a contained change.
@@ -11,7 +11,7 @@ export interface PaymentProvider {
   isConfigured(): boolean;
   /**
    * Create a hosted-checkout session for one invoice and return the redirect URL.
-   * Amounts are in the lowest denomination (paisa) — Safepay expects that too.
+   * Amounts are in the lowest denomination (paisa) - Safepay expects that too.
    */
   createCheckoutSession(params: {
     invoiceId: string;
@@ -24,7 +24,7 @@ export interface PaymentProvider {
   verifyWebhookSignature(rawBody: string, signature: string): boolean;
   /** Normalize a verified webhook payload into a typed event. */
   parseWebhookEvent(payload: unknown): WebhookEvent;
-  /** Server-side status check of a tracker — used as a reconciliation fallback only. */
+  /** Server-side status check of a tracker - used as a reconciliation fallback only. */
   verifyPayment(trackerToken: string): Promise<'succeeded' | 'failed' | 'unknown'>;
 }
 
@@ -44,7 +44,7 @@ export class PaymentProviderError extends Error {
 
 // ── Safepay implementation ──────────────────────────────────────────────────
 //
-// Contract (verified against Safepay's official SDKs — @sfpy/node-core and the
+// Contract (verified against Safepay's official SDKs - @sfpy/node-core and the
 // safepay-checkout-woocommerce plugin):
 //   1. POST {base}/client/passport/v1/token   → tbt (time-based token)
 //   2. POST {base}/order/payments/v3/         → { data: { tracker: { token } } }  (HTTP 201)
@@ -118,7 +118,7 @@ async function safepayFetch(url: string, body: unknown, secret: string): Promise
     try {
       json = JSON.parse(text);
     } catch {
-      // Non-JSON error body — log a truncated snippet below, never the full body if sensitive.
+      // Non-JSON error body - log a truncated snippet below, never the full body if sensitive.
       json = null;
     }
     return { status: res.status, json };
@@ -145,7 +145,7 @@ class SafepayPaymentProvider implements PaymentProvider {
     }
     const apiBase = API_BASE[config.environment];
 
-    // Step 1 — passport token (tbt)
+    // Step 1 - passport token (tbt)
     const tokenRes = await safepayFetch(`${apiBase}/client/passport/v1/token`, {}, config.merchantSecret);
     if (tokenRes.status < 200 || tokenRes.status >= 300) {
       console.error(`[Safepay] Token request failed (HTTP ${tokenRes.status}): ${safepayErrorDetail(tokenRes.json)}`);
@@ -157,7 +157,7 @@ class SafepayPaymentProvider implements PaymentProvider {
       throw new PaymentProviderError('Safepay returned no checkout token (passport)');
     }
 
-    // Step 2 — create the tracker for this invoice
+    // Step 2 - create the tracker for this invoice
     const txRes = await safepayFetch(`${apiBase}/order/payments/v3/`, {
       amount: params.amount,
       intent: 'CYBERSOURCE',
@@ -168,7 +168,7 @@ class SafepayPaymentProvider implements PaymentProvider {
       source: 'omnihome',
     }, config.merchantSecret);
     if (txRes.status !== 201 && txRes.status !== 200) {
-      // Log the status and a truncated, non-sensitive Safepay error reason — never raw payloads.
+      // Log the status and a truncated, non-sensitive Safepay error reason - never raw payloads.
       console.error(`[Safepay] Tracker creation failed (HTTP ${txRes.status}) for invoice ${params.invoiceId}: ${safepayErrorDetail(txRes.json)}`);
       throw new PaymentProviderError(`Safepay could not start a checkout (HTTP ${txRes.status})`);
     }
@@ -177,7 +177,7 @@ class SafepayPaymentProvider implements PaymentProvider {
       throw new PaymentProviderError('Safepay returned no checkout token');
     }
 
-    // Step 3 — hosted checkout URL (redirect flow)
+    // Step 3 - hosted checkout URL (redirect flow)
     const query = new URLSearchParams({
       tbt: tbt || '',
       tracker: trackerToken,
@@ -197,7 +197,7 @@ class SafepayPaymentProvider implements PaymentProvider {
     const secret = config.webhookSecret;
 
     const compute = (payload: string) => crypto.createHmac('sha512', secret).update(payload).digest('hex');
-    // timingSafeEqual throws on length mismatch — guard first (attacker-controlled input).
+    // timingSafeEqual throws on length mismatch - guard first (attacker-controlled input).
     const secureEqual = (a: string, b: string): boolean => {
       const expected = Buffer.from(a, 'hex');
       const provided = Buffer.from(b, 'hex');
@@ -215,7 +215,7 @@ class SafepayPaymentProvider implements PaymentProvider {
       const normalizedExpected = compute(normalized);
       if (secureEqual(normalizedExpected, signature) || normalizedExpected === signature) return true;
     } catch {
-      // Not JSON — nothing else to try.
+      // Not JSON - nothing else to try.
     }
     return false;
   }

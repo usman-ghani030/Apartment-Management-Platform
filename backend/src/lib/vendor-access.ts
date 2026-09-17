@@ -8,9 +8,9 @@ import type { TicketStatus, VendorStatusUpdate } from '@apartment/shared';
 // token-secured public link instead. Deliberate differences from the password
 // reset token (see lib/password-reset.ts), because the requirements differ:
 //
-//   * NOT single-use — the vendor returns to the same link over several days
+//   * NOT single-use - the vendor returns to the same link over several days
 //     ("In Progress" today, "Resolved" later).
-//   * NOT time-limited — validity is governed by ticket state instead: while the
+//   * NOT time-limited - validity is governed by ticket state instead: while the
 //     ticket is still assigned to that vendor and not CLOSED.
 //   * Invalidated by *rotation*: reassigning the ticket overwrites the stored
 //     hash, so the previous vendor's link stops working immediately.
@@ -19,7 +19,7 @@ import type { TicketStatus, VendorStatusUpdate } from '@apartment/shared';
 // solely inside the emailed URL.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 256 bits of CSPRNG entropy, base64url-encoded (43 chars) — not guessable. */
+/** 256 bits of CSPRNG entropy, base64url-encoded (43 chars) - not guessable. */
 export function generateVendorAccessToken(): { raw: string; hash: string } {
   const raw = randomBytes(32).toString('base64url');
   return { raw, hash: hashVendorAccessToken(raw) };
@@ -57,7 +57,7 @@ export function buildVendorTicketUrl(rawToken: string): string {
 
 /**
  * The only status transitions a vendor may perform. `CLOSED` is intentionally
- * absent — closing is an admin action that also captures the vendor rating
+ * absent - closing is an admin action that also captures the vendor rating
  * (Phase 7), so RESOLVED is the end of the vendor's flow.
  */
 const VENDOR_TRANSITIONS: Record<TicketStatus, VendorStatusUpdate[]> = {
@@ -95,7 +95,7 @@ export interface VendorAssignmentEmailData {
   description: string;
   category: string;
   unitNumber: string | null;
-  /** Absolute URLs — email clients cannot resolve relative paths. */
+  /** Absolute URLs - email clients cannot resolve relative paths. */
   photoUrls: string[];
   /** The magic link. */
   ticketUrl: string;
@@ -104,7 +104,7 @@ export interface VendorAssignmentEmailData {
 export function buildVendorAssignmentEmail(
   data: VendorAssignmentEmailData
 ): { subject: string; html: string; text: string } {
-  const subject = `New job assigned: ${data.ticketRef} — ${data.title}`;
+  const subject = `New job assigned: ${data.ticketRef} - ${data.title}`;
   const escapeHtml = (s: string) =>
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -151,7 +151,7 @@ export function buildVendorAssignmentEmail(
       <p style="color:#6b7280;font-size:13px;line-height:1.6;">
         This link is personal to you and works without a login. Use it to mark the
         job <strong>In Progress</strong> and later <strong>Resolved</strong>. Please don't
-        forward it — anyone with the link can update this ticket.
+        forward it - anyone with the link can update this ticket.
       </p>
     </div>
   `;

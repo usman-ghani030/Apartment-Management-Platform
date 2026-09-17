@@ -1,20 +1,41 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, QrCode, X, Clock, User, Phone, Car } from 'lucide-react';
+import {
+  ArrowLeft, Plus, QrCode, X, Car, Phone, CalendarDays, Copy, Check,
+  ClipboardList, ShieldCheck, LogIn, CopyCheck,
+} from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { Modal, fieldLabel, fieldInput } from '@/components/ui/Modal';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { StatTile, StatTileGrid } from '@/components/ui/StatTile';
+import { Panel, CountPill, PanelEmpty } from '@/components/ui/Panel';
+import { PageSkeleton } from '@/components/ui/LoadingScreen';
 import { ApiError, apiGet, apiPost } from '@/lib/api';
 import type { VisitorPassResponse } from '@apartment/shared';
 
-const STATUS_STYLES: Record<string, string> = {
-  PENDING: 'bg-yellow-500/10 text-yellow-400',
-  APPROVED: 'bg-blue-500/10 text-blue-400',
-  CHECKED_IN: 'bg-green-500/10 text-green-400',
-  CHECKED_OUT: 'bg-gray-500/10 text-gray-700',
-  EXPIRED: 'bg-red-500/10 text-red-400',
-  CANCELLED: 'bg-red-500/10 text-red-400',
+// ─────────────────────────────────────────────────────────────────────────────
+// Visitor passes: pre-approve someone, hand them a QR at the gate, cancel if
+// plans change. Same endpoints as before, rebuilt on the design system.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type BadgeVariant = 'warning' | 'info' | 'success' | 'neutral' | 'danger';
+
+const STATUS_META: Record<string, { label: string; badge: BadgeVariant; rail: string }> = {
+  PENDING: { label: 'Awaiting approval', badge: 'warning', rail: 'bg-amber-400' },
+  APPROVED: { label: 'Approved', badge: 'info', rail: 'bg-accent-500' },
+  CHECKED_IN: { label: 'On site', badge: 'success', rail: 'bg-emerald-500' },
+  CHECKED_OUT: { label: 'Checked out', badge: 'neutral', rail: 'bg-gray-300' },
+  EXPIRED: { label: 'Expired', badge: 'neutral', rail: 'bg-gray-300' },
+  CANCELLED: { label: 'Cancelled', badge: 'danger', rail: 'bg-gray-300' },
 };
+
+const metaFor = (status: string) =>
+  STATUS_META[status] || { label: status, badge: 'neutral' as BadgeVariant, rail: 'bg-gray-300' };
+
+const shortDateTime = (iso: string) =>
+  new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 export default function ResidentVisitorsPage() {
   const router = useRouter();
@@ -30,6 +51,7 @@ export default function ResidentVisitorsPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showQr, setShowQr] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const fetchPasses = useCallback(async () => {
     try {
@@ -42,7 +64,7 @@ export default function ResidentVisitorsPage() {
 
   useEffect(() => { fetchPasses(); }, [fetchPasses]);
 
-  const resetForm = () => {
+  const closeForm = () => {
     setVisitorName(''); setVisitorPhone(''); setVisitorEmail('');
     setVehicleNumber(''); setPurpose(''); setShowForm(false); setError('');
   };
@@ -56,8 +78,8 @@ export default function ResidentVisitorsPage() {
       if (vehicleNumber) body.vehicleNumber = vehicleNumber;
       if (purpose) body.purpose = purpose;
       await apiPost('/api/v1/visitors', body);
-      resetForm();
-      setSuccess('Visitor pass created! Share the QR code with your visitor.');
+      closeForm();
+      setSuccess('Pass created. Show the QR code at the gate, or share it with your visitor.');
       fetchPasses();
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
@@ -73,123 +95,331 @@ export default function ResidentVisitorsPage() {
     }
   };
 
-  if (loading) return <div className="min-h-screen bg-white text-gray-900 flex items-center justify-center "><div className="animate-spin h-8 w-8 border-2 border-accent-500 border-t-transparent rounded-full" /></div>;
+  const copyToken = async (pass: VisitorPassResponse) => {
+    try {
+      await navigator.clipboard.writeText(pass.qrToken);
+      setCopiedId(pass.id);
+      setTimeout(() => setCopiedId((current) => (current === pass.id ? null : current)), 2000);
+    } catch {
+      setError('Could not copy the token. Select it manually instead.');
+    }
+  };
+
+  if (loading) return <PageSkeleton width="max-w-5xl" />;
 
   const activePasses = passes.filter((p) => ['PENDING', 'APPROVED', 'CHECKED_IN'].includes(p.status));
   const historyPasses = passes.filter((p) => ['CHECKED_OUT', 'EXPIRED', 'CANCELLED'].includes(p.status));
+  const pendingCount = passes.filter((p) => p.status === 'PENDING').length;
+  const onSiteCount = passes.filter((p) => p.status === 'CHECKED_IN').length;
 
   return (
-    <div className="min-h-screen bg-white text-gray-900">
-      <main className="max-w-4xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <button onClick={() => router.push('/dashboard/resident')} className="p-2 hover:bg-gray-50 rounded-lg transition-colors"><ArrowLeft className="w-5 h-5 text-gray-700" /></button>
-            <div><h1 className="text-2xl font-bold text-gray-900">Visitor Passes</h1><p className="text-gray-700 text-sm">Pre-approve visitors for gate access</p></div>
+    <div className="mx-auto max-w-5xl px-6 py-8">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-4">
+          <button
+            onClick={() => router.push('/dashboard/resident')}
+            aria-label="Back to dashboard"
+            className="rounded-xl border border-gray-200 bg-white p-2.5 text-gray-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-accent-200 hover:text-accent-700"
+          >
+            <ArrowLeft className="h-4.5 w-4.5" />
+          </button>
+          <div className="flex min-w-0 items-center gap-3.5">
+            <div className="hidden h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-accent-500 to-accent-600 text-white shadow-[0_10px_24px_-12px_rgba(37,99,235,1)] sm:flex">
+              <QrCode className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-display-sm font-display text-gray-900">Visitor passes</h1>
+              <p className="text-body-sm text-gray-500">Let the gate know who to expect, with a QR they scan on arrival</p>
+            </div>
           </div>
-          <button onClick={() => { resetForm(); setShowForm(!showForm); }} className="flex items-center gap-2 bg-accent-600 hover:bg-accent-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-all"><Plus className="w-4 h-4" /> New Pass</button>
         </div>
 
-        {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
-        {success && <div className="bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-lg px-4 py-3 mb-6">{success}</div>}
+        <button
+          onClick={() => { closeForm(); setShowForm(true); }}
+          className="inline-flex flex-shrink-0 items-center gap-2 rounded-xl bg-accent-600 px-4 py-2.5 text-body-sm font-semibold text-white shadow-[0_8px_20px_-12px_rgba(37,99,235,1)] transition-all hover:-translate-y-0.5 hover:bg-accent-700"
+        >
+          <Plus className="h-4 w-4" /> New pass
+        </button>
+      </div>
 
-        {/* Create Form */}
-        {showForm && (
-          <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 border border-gray-200 mb-8">
-            <h2 className="text-lg font-semibold mb-4">Create Visitor Pass</h2>
-            <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Visitor Name *</label>
-                <input type="text" value={visitorName} onChange={(e) => setVisitorName(e.target.value)} placeholder="e.g. John Doe" required maxLength={100} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
-                <input type="tel" value={visitorPhone} onChange={(e) => setVisitorPhone(e.target.value)} placeholder="e.g. +1 555-1234" required maxLength={30} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email (optional)</label>
-                <input type="email" value={visitorEmail} onChange={(e) => setVisitorEmail(e.target.value)} placeholder="visitor@email.com" maxLength={200} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle Number (optional)</label>
-                <input type="text" value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value)} placeholder="e.g. ABC 1234" maxLength={30} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50" />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Purpose (optional)</label>
-                <input type="text" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="e.g. Delivery, Family visit, Maintenance" maxLength={200} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50" />
-              </div>
-              <div className="md:col-span-2 flex gap-3">
-                <button type="submit" disabled={submitting} className="bg-accent-600 hover:bg-accent-700 disabled:opacity-50 text-white rounded-lg px-6 py-2 text-sm font-medium transition-all">{submitting ? 'Creating...' : 'Create Pass'}</button>
-                <button type="button" onClick={resetForm} className="text-sm text-gray-700 hover:text-gray-900 px-4 py-2">Cancel</button>
-              </div>
-            </form>
-          </div>
-        )}
+      {error && (
+        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3.5">
+          <p className="flex-1 text-body-sm text-red-700">{error}</p>
+          <button onClick={() => setError('')} aria-label="Dismiss" className="rounded-lg p-1 text-red-400 transition-colors hover:bg-red-100 hover:text-red-700">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+      {success && (
+        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5">
+          <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" />
+          <p className="flex-1 text-body-sm text-emerald-700">{success}</p>
+          <button onClick={() => setSuccess('')} aria-label="Dismiss" className="rounded-lg p-1 text-emerald-500 transition-colors hover:bg-emerald-100 hover:text-emerald-700">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
-        {/* Active Passes */}
-        <h2 className="text-lg font-semibold mb-4">Active Passes</h2>
+      {passes.length > 0 && (
+        <StatTileGrid className="mb-6">
+          <StatTile icon={ClipboardList} label="Active" value={activePasses.length} hint={activePasses.length === 0 ? 'None right now' : 'Still valid'} />
+          <StatTile
+            icon={ShieldCheck}
+            label="Awaiting approval"
+            value={pendingCount}
+            hint={pendingCount === 0 ? 'Nothing pending' : 'Needs a decision'}
+            tone={pendingCount > 0 ? 'warning' : 'accent'}
+          />
+          <StatTile icon={LogIn} label="On site" value={onSiteCount} hint={onSiteCount === 0 ? 'Nobody inside' : 'Checked in now'} />
+          <StatTile icon={CopyCheck} label="Past passes" value={historyPasses.length} hint="Closed, expired or cancelled" />
+        </StatTileGrid>
+      )}
+
+      <Panel
+        icon={QrCode}
+        title="Active passes"
+        hint={activePasses.length === 0 ? 'No passes are valid right now' : 'Tap a pass to show its gate QR code'}
+        meta={<CountPill tone={activePasses.length === 0 ? 'neutral' : 'accent'}>{activePasses.length}</CountPill>}
+      >
         {activePasses.length === 0 ? (
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 border border-gray-200 text-center mb-8">
-            <QrCode className="w-10 h-10 text-gray-700 mx-auto mb-3" />
-            <p className="text-gray-700 text-sm">No active visitor passes</p>
-            <p className="text-gray-700 text-xs mt-1">Create a pass for your visitors to get gate access</p>
-          </div>
+          <PanelEmpty
+            icon={QrCode}
+            title="No active passes"
+            description="Create a pass and your visitor gets a QR code the guard can scan at the gate."
+            action={
+              <button
+                onClick={() => { closeForm(); setShowForm(true); }}
+                className="inline-flex items-center gap-2 rounded-xl bg-accent-600 px-4 py-2.5 text-body-sm font-semibold text-white shadow-[0_8px_20px_-12px_rgba(37,99,235,1)] transition-all hover:bg-accent-700"
+              >
+                <Plus className="h-4 w-4" /> Create a pass
+              </button>
+            }
+          />
         ) : (
-          <div className="space-y-3 mb-8">
-            {activePasses.map((p) => (
-              <div key={p.id} className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 border border-gray-200">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${STATUS_STYLES[p.status] || ''}`}>{p.status}</span>
-                      <span className="text-xs text-gray-700 font-medium">{p.visitorName}</span>
+          <ul className="divide-y divide-gray-100">
+            {activePasses.map((p) => {
+              const meta = metaFor(p.status);
+              const qrOpen = showQr === p.id;
+              return (
+                <li key={p.id} className="relative">
+                  <span className={`absolute left-0 top-0 bottom-0 w-1 ${meta.rail}`} aria-hidden="true" />
+
+                  <div className="px-5 py-4 pl-6">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusBadge variant={meta.badge}>{meta.label}</StatusBadge>
+                          <h3 className="truncate text-body font-semibold text-gray-900">{p.visitorName}</h3>
+                        </div>
+
+                        <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-caption-xs text-gray-500">
+                          <span className="inline-flex items-center gap-1.5">
+                            <Phone className="h-3.5 w-3.5 text-gray-400" /> {p.visitorPhone}
+                          </span>
+                          {p.vehicleNumber && (
+                            <span className="inline-flex items-center gap-1.5">
+                              <Car className="h-3.5 w-3.5 text-gray-400" /> {p.vehicleNumber}
+                            </span>
+                          )}
+                          {p.purpose && (
+                            <span className="inline-flex items-center gap-1.5">
+                              <ClipboardList className="h-3.5 w-3.5 text-gray-400" /> {p.purpose}
+                            </span>
+                          )}
+                          <span className="inline-flex items-center gap-1.5">
+                            <CalendarDays className="h-3.5 w-3.5 text-gray-400" /> {shortDateTime(p.createdAt)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-shrink-0 items-center gap-2">
+                        <button
+                          onClick={() => setShowQr(qrOpen ? null : p.id)}
+                          aria-expanded={qrOpen}
+                          className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-body-sm font-medium transition-all ${
+                            qrOpen
+                              ? 'bg-accent-600 text-white shadow-[0_8px_20px_-12px_rgba(37,99,235,1)]'
+                              : 'border border-accent-200 bg-accent-50 text-accent-700 hover:border-accent-300 hover:bg-accent-100'
+                          }`}
+                        >
+                          <QrCode className="h-3.5 w-3.5" />
+                          {qrOpen ? 'Hide QR' : 'Show QR'}
+                        </button>
+                        {['PENDING', 'APPROVED'].includes(p.status) && (
+                          <button
+                            onClick={() => handleCancel(p.id)}
+                            className="rounded-xl border border-gray-200 px-3 py-2 text-body-sm font-medium text-gray-500 transition-all hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex flex-wrap gap-3 text-xs text-gray-700 mt-1">
-                      <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {p.visitorPhone}</span>
-                      {p.vehicleNumber && <span className="flex items-center gap-1"><Car className="w-3 h-3" /> {p.vehicleNumber}</span>}
-                      {p.purpose && <span className="flex items-center gap-1">{p.purpose}</span>}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 ml-3">
-                    <button onClick={() => setShowQr(showQr === p.id ? null : p.id)} className={`p-2 rounded-lg transition-all ${showQr === p.id ? 'bg-cyan-500/20 text-accent-500' : 'hover:bg-gray-50 text-gray-700'}`} title="Show QR code"><QrCode className="w-4 h-4" /></button>
-                    {['PENDING', 'APPROVED'].includes(p.status) && (
-                      <button onClick={() => handleCancel(p.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1.5 hover:bg-red-500/10 rounded-lg transition-colors">Cancel</button>
+
+                    {qrOpen && (
+                      <div className="mt-4 grid gap-5 rounded-2xl border border-gray-200/80 bg-gray-50/70 p-5 sm:grid-cols-[auto_1fr]">
+                        <div className="mx-auto rounded-2xl border border-gray-200/80 bg-white p-3 shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
+                          <QRCodeSVG value={p.qrToken} size={148} level="M" includeMargin />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-body-sm font-semibold text-gray-900">Gate pass for {p.visitorName}</p>
+                          <p className="mt-1 text-caption-xs leading-relaxed text-gray-500">
+                            Show this code to the guard, or send it to your visitor. It is checked in the Scan QR
+                            screen at the gate.
+                          </p>
+
+                          <div className="mt-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-400">Pass token</p>
+                            <div className="mt-1.5 flex items-center gap-2">
+                              <code className="min-w-0 flex-1 truncate rounded-xl border border-gray-200/80 bg-white px-3 py-2 font-mono text-caption-xs text-gray-600">
+                                {p.qrToken}
+                              </code>
+                              <button
+                                onClick={() => copyToken(p)}
+                                className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-caption-xs font-semibold text-gray-600 transition-all hover:border-accent-200 hover:text-accent-700"
+                              >
+                                {copiedId === p.id ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                                {copiedId === p.id ? 'Copied' : 'Copy'}
+                              </button>
+                            </div>
+                          </div>
+
+                          <p className="mt-3 text-caption-xs text-gray-400">Created {shortDateTime(p.createdAt)}</p>
+                        </div>
+                      </div>
                     )}
                   </div>
-                </div>
-
-                {showQr === p.id && (
-                  <div className="mt-4 pt-4 border-t border-gray-200 flex flex-col items-center">
-                    <div className="bg-white p-3 rounded-xl mb-3">
-                      <QRCodeSVG value={p.qrToken} size={160} level="M" includeMargin />
-                    </div>
-                    <p className="text-[10px] text-gray-700 font-mono mb-1">Token: {p.qrToken}</p>
-                    <p className="text-[10px] text-gray-700">Show this QR code at the gate for entry</p>
-                    <p className="text-[10px] text-gray-700 mt-1">Created: {new Date(p.createdAt).toLocaleString()}</p>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+                </li>
+              );
+            })}
+          </ul>
         )}
+      </Panel>
 
-        {/* History */}
-        {historyPasses.length > 0 && (
+      {historyPasses.length > 0 && (
+        <Panel
+          icon={CopyCheck}
+          title="History"
+          hint="Passes that are closed, expired or cancelled"
+          meta={<CountPill tone="neutral">{historyPasses.length}</CountPill>}
+          className="mt-6"
+        >
+          <ul className="divide-y divide-gray-100">
+            {historyPasses.map((p) => {
+              const meta = metaFor(p.status);
+              return (
+                <li key={p.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5">
+                  <StatusBadge variant={meta.badge} dot={false}>{meta.label}</StatusBadge>
+                  <span className="text-body-sm font-medium text-gray-700">{p.visitorName}</span>
+                  {p.vehicleNumber && (
+                    <span className="inline-flex items-center gap-1.5 text-caption-xs text-gray-400">
+                      <Car className="h-3 w-3" /> {p.vehicleNumber}
+                    </span>
+                  )}
+                  <span className="ml-auto text-caption-xs text-gray-400">{shortDateTime(p.createdAt)}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </Panel>
+      )}
+
+      {/* ── New pass ────────────────────────────────────────────────── */}
+      <Modal
+        open={showForm}
+        onClose={closeForm}
+        title="Create visitor pass"
+        subtitle="The gate uses these details to verify your visitor on arrival"
+        icon={QrCode}
+        footer={
           <>
-            <h2 className="text-lg font-semibold mb-4">History</h2>
-            <div className="space-y-2">
-              {historyPasses.map((p) => (
-                <div key={p.id} className="bg-white border border-gray-200 rounded-xl shadow-sm p-3 border border-gray-200 opacity-60">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${STATUS_STYLES[p.status] || ''}`}>{p.status}</span>
-                    <span className="text-xs text-gray-700">{p.visitorName}</span>
-                    <span className="text-[10px] text-gray-700 ml-auto">{new Date(p.createdAt).toLocaleDateString()}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <button
+              type="submit"
+              form="create-pass"
+              disabled={submitting}
+              className="flex-1 rounded-xl bg-accent-600 px-4 py-2.5 text-body-sm font-semibold text-white shadow-[0_8px_20px_-12px_rgba(37,99,235,1)] transition-all hover:bg-accent-700 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400 disabled:shadow-none"
+            >
+              {submitting ? 'Creating...' : 'Create pass'}
+            </button>
+            <button
+              type="button"
+              onClick={closeForm}
+              className="rounded-xl border border-gray-200 px-4 py-2.5 text-body-sm font-medium text-gray-600 transition-all hover:bg-gray-50 hover:text-gray-900"
+            >
+              Cancel
+            </button>
           </>
-        )}
-      </main>
+        }
+      >
+        <form id="create-pass" onSubmit={handleCreate} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className={fieldLabel} htmlFor="visitor-name">Visitor name</label>
+            <input
+              id="visitor-name"
+              type="text"
+              value={visitorName}
+              onChange={(e) => setVisitorName(e.target.value)}
+              placeholder="e.g. John Doe"
+              required
+              maxLength={100}
+              className={fieldInput}
+            />
+          </div>
+          <div>
+            <label className={fieldLabel} htmlFor="visitor-phone">Phone</label>
+            <input
+              id="visitor-phone"
+              type="tel"
+              value={visitorPhone}
+              onChange={(e) => setVisitorPhone(e.target.value)}
+              placeholder="e.g. +92 300 1234567"
+              required
+              maxLength={30}
+              className={fieldInput}
+            />
+          </div>
+          <div>
+            <label className={fieldLabel} htmlFor="visitor-email">Email (optional)</label>
+            <input
+              id="visitor-email"
+              type="email"
+              value={visitorEmail}
+              onChange={(e) => setVisitorEmail(e.target.value)}
+              placeholder="visitor@email.com"
+              maxLength={200}
+              className={fieldInput}
+            />
+          </div>
+          <div>
+            <label className={fieldLabel} htmlFor="visitor-vehicle">Vehicle number (optional)</label>
+            <input
+              id="visitor-vehicle"
+              type="text"
+              value={vehicleNumber}
+              onChange={(e) => setVehicleNumber(e.target.value)}
+              placeholder="e.g. ABC 1234"
+              maxLength={30}
+              className={fieldInput}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={fieldLabel} htmlFor="visitor-purpose">Purpose (optional)</label>
+            <input
+              id="visitor-purpose"
+              type="text"
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value)}
+              placeholder="e.g. Delivery, family visit, maintenance"
+              maxLength={200}
+              className={fieldInput}
+            />
+          </div>
+
+          {error && (
+            <p className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-body-sm text-red-700 sm:col-span-2">{error}</p>
+          )}
+        </form>
+      </Modal>
     </div>
   );
 }

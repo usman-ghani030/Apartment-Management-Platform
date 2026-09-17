@@ -63,7 +63,7 @@ router.post(
 );
 
 // ── GET /api/v1/staff/on-duty ──────────────────────────────────────────────
-// Read-only view of active staff — accessible to residents too
+// Read-only view of active staff - accessible to residents too
 router.get(
   '/on-duty',
   requireAuth,

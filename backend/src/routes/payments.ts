@@ -18,7 +18,7 @@ router.post('/webhook', async (req, res) => {
   const signature = (req.headers['x-sfpy-signature'] as string) || (req.headers['x-safepay-signature'] as string) || '';
 
   if (!rawBody || !signature || !provider.verifyWebhookSignature(rawBody, signature)) {
-    // Log minimal info only — never echo the payload back to the caller.
+    // Log minimal info only - never echo the payload back to the caller.
     console.warn(`[Safepay] Webhook rejected: missing/invalid signature (len=${rawBody?.length ?? 0})`);
     res.status(400).json({ data: null, error: { code: 'INVALID_SIGNATURE', message: 'Invalid signature' } });
     return;
@@ -41,7 +41,7 @@ router.post('/webhook', async (req, res) => {
 
   const payment = await prisma.payment.findUnique({ where: { providerSessionId: event.trackerToken } });
   if (!payment) {
-    console.warn(`[Safepay] Webhook for unknown tracker ${event.trackerToken.slice(0, 8)}… — acknowledged`);
+    console.warn(`[Safepay] Webhook for unknown tracker ${event.trackerToken.slice(0, 8)}… - acknowledged`);
     res.status(200).json({ data: { received: true }, error: null });
     return;
   }

@@ -1,4 +1,4 @@
-# Manual Test Guide — Unit Enhancements
+# Manual Test Guide - Unit Enhancements
 
 ## Prerequisites
 - Backend running at http://localhost:4000 (via Docker)
@@ -168,7 +168,7 @@
 
 ---
 
-## Test 10: API Verification (Optional — for technical testing)
+## Test 10: API Verification (Optional - for technical testing)
 
 ### Steps
 ```bash
@@ -243,12 +243,12 @@ curl -H "x-access-token: YOUR_TOKEN" http://localhost:4000/api/v1/buildings/BUIL
 ## Regression Checks
 
 ### Ensure Existing Features Still Work
-1. **Create/Edit/Delete Building** — unchanged, still works
-2. **Create/Edit/Delete Unit** — works with new optional fields
-3. **Unit list pagination** — not affected (units still listed)
-4. **Resident invite flow** — still works, unit detail has quick-invite
-5. **Ticket creation** — still works with unit selection
-6. **Invoice creation** — still works with unit selection
+1. **Create/Edit/Delete Building** - unchanged, still works
+2. **Create/Edit/Delete Unit** - works with new optional fields
+3. **Unit list pagination** - not affected (units still listed)
+4. **Resident invite flow** - still works, unit detail has quick-invite
+5. **Ticket creation** - still works with unit selection
+6. **Invoice creation** - still works with unit selection
 
 ---
 

@@ -1,6 +1,6 @@
-# Apartment Management Platform — Master Plan
+# Apartment Management Platform - Master Plan
 
-> **Purpose of this document:** This is the single source of truth for architecture, conventions, and phase scope. AI coding agents (Claude Code, opencode, etc.) and the human developer should read this before starting any task. If a decision here needs to change, update this file first, then write code — never let code and this doc drift apart.
+> **Purpose of this document:** This is the single source of truth for architecture, conventions, and phase scope. AI coding agents (Claude Code, opencode, etc.) and the human developer should read this before starting any task. If a decision here needs to change, update this file first, then write code - never let code and this doc drift apart.
 
 ---
 
@@ -30,9 +30,9 @@ A multi-tenant SaaS platform that replaces WhatsApp, paper logs, and spreadsheet
 
 ---
 
-## 3. Project Structure — npm Workspaces (not a full monorepo tool)
+## 3. Project Structure - npm Workspaces (not a full monorepo tool)
 
-Package manager: **npm**, using npm's built-in **workspaces** feature — no Turborepo, no separate build orchestration tool. Simple, sufficient for a two-package solo project, and one `npm install` at the root installs everything.
+Package manager: **npm**, using npm's built-in **workspaces** feature - no Turborepo, no separate build orchestration tool. Simple, sufficient for a two-package solo project, and one `npm install` at the root installs everything.
 
 ```
 /frontend          → Next.js app (TypeScript + Tailwind)
@@ -48,9 +48,9 @@ package.json        → root, declares npm workspaces: ["frontend", "backend", "
 
 Rules:
 - Domain types (e.g. `Society`, `Ticket`, `Role`) live in `shared`, derived from Prisma types where possible, and imported by both `frontend` and `backend` via the workspace reference (`"shared": "*"` in each package's dependencies). Never redefine the same shape twice.
-- Prisma schema, migrations, and generated client live in `backend/prisma` — no separate `db` package. `shared` imports Prisma-derived types from `backend` only where needed (e.g. via a types-only export), never the Prisma client itself (frontend must never get direct DB access).
+- Prisma schema, migrations, and generated client live in `backend/prisma` - no separate `db` package. `shared` imports Prisma-derived types from `backend` only where needed (e.g. via a types-only export), never the Prisma client itself (frontend must never get direct DB access).
 - No feature code in `backend/prisma` beyond schema, migrations, and a typed Prisma client export.
-- `ai-service` (Python + FastAPI) is added as its own top-level folder only when Phase 7 starts — it's a separate language/runtime, so it sits outside the npm workspace, not inside it.
+- `ai-service` (Python + FastAPI) is added as its own top-level folder only when Phase 7 starts - it's a separate language/runtime, so it sits outside the npm workspace, not inside it.
 
 ---
 
@@ -60,12 +60,12 @@ These apply to every phase and every feature, regardless of which agent or sessi
 
 ### 4.1 Multi-tenancy: shared DB, shared schema, `societyId` scoping
 - Every tenant-scoped table has a `societyId` foreign key column.
-- All reads/writes MUST be scoped to the authenticated session's `societyId`. This is enforced via a Prisma middleware / repository layer (see `backend/src/db/tenant-scope.ts`, built in Phase 0) — **never rely on individual query authors remembering to add the filter.**
+- All reads/writes MUST be scoped to the authenticated session's `societyId`. This is enforced via a Prisma middleware / repository layer (see `backend/src/db/tenant-scope.ts`, built in Phase 0) - **never rely on individual query authors remembering to add the filter.**
 - Global (non-tenant) tables: `User` (a person can theoretically belong to multiple societies via `Membership`), platform-level `SuperAdmin` accounts.
 - Cross-tenant data access is a critical bug, not a feature request. Any code that queries without going through the tenant-scoped repository layer should be treated as a red flag in review.
 
 ### 4.2 Schema-first development
-- The Prisma schema is the source of truth for the domain model. Changes to core entities (Society, Building, Unit, User, Membership, Role) require updating `backend/prisma/schema.prisma` and a migration, then regenerating shared types — before any UI or API code is written against them.
+- The Prisma schema is the source of truth for the domain model. Changes to core entities (Society, Building, Unit, User, Membership, Role) require updating `backend/prisma/schema.prisma` and a migration, then regenerating shared types - before any UI or API code is written against them.
 - Do not invent ad-hoc fields on the fly inside a route handler. Update the schema first.
 
 ### 4.3 Vertical slices
@@ -73,12 +73,12 @@ These apply to every phase and every feature, regardless of which agent or sessi
 
 ### 4.4 Audit trail is infrastructure, not a feature
 - A generic `AuditLog` table is built in Phase 0: `id, societyId, actorUserId, action, entityType, entityId, beforeJson, afterJson, createdAt`.
-- Every mutating action in every module (create/update/delete ticket, payment, vote, booking, membership change, etc.) writes an entry. Build a small helper (`logAudit(...)`) in Phase 0 and use it everywhere — do not build per-feature audit logging later.
+- Every mutating action in every module (create/update/delete ticket, payment, vote, booking, membership change, etc.) writes an entry. Build a small helper (`logAudit(...)`) in Phase 0 and use it everywhere - do not build per-feature audit logging later.
 
 ### 4.5 Type safety & validation boundaries
 - TypeScript strict mode everywhere.
 - All API request/response bodies validated with Zod at the Express route boundary before touching business logic.
-- Since this is a solo-developer + AI-agent workflow, type safety and validation are the primary review mechanism — treat `any` and unvalidated `req.body` access as bugs.
+- Since this is a solo-developer + AI-agent workflow, type safety and validation are the primary review mechanism - treat `any` and unvalidated `req.body` access as bugs.
 
 ### 4.6 Small, reviewable units of work
 - One vertical slice = one feature branch = one focused set of commits. Avoid multi-feature mega-commits; they are hard for a human reviewer to check when an agent wrote the code.
@@ -90,41 +90,41 @@ These apply to every phase and every feature, regardless of which agent or sessi
 Redis is in the stack from Phase 0 but used minimally at first, expanding as phases need it:
 
 - **Phase 0**: session/token blacklist (logout, revoked memberships) and simple rate limiting on auth routes.
-- **Phase 1+**: background job queue via BullMQ — used for anything that shouldn't block a request: notification dispatch (email on new notice/ticket status), recurring invoice generation (Phase 2), booking-conflict cleanup jobs (Phase 3).
-- **Do not** use Redis as a source of truth for anything — it's always a cache/queue in front of Postgres, never the only copy of data.
+- **Phase 1+**: background job queue via BullMQ - used for anything that shouldn't block a request: notification dispatch (email on new notice/ticket status), recurring invoice generation (Phase 2), booking-conflict cleanup jobs (Phase 3).
+- **Do not** use Redis as a source of truth for anything - it's always a cache/queue in front of Postgres, never the only copy of data.
 - One `backend/src/queue/` module owns all BullMQ queue definitions; features add jobs to it rather than creating ad-hoc queues.
 
 ## 6. API Conventions
 
-Applies to every Express route from Phase 0 onward — agents should follow these without re-deciding per feature.
+Applies to every Express route from Phase 0 onward - agents should follow these without re-deciding per feature.
 
 - **Response envelope**: `{ data, error: null }` on success, `{ data: null, error: { code, message } }` on failure. No bare arrays/objects returned from routes.
 - **Pagination**: cursor-based (`?cursor=&limit=`) for list endpoints, default `limit=20`, max `100`. Return `{ data: [...], nextCursor }`.
-- **Versioning**: prefix all routes `/api/v1/...` from day one — costs nothing now, avoids a painful rename later.
-- **Errors**: thrown as a typed `AppError(code, httpStatus, message)` caught by a single Express error-handling middleware — no inline `res.status(500).json(...)` scattered through route handlers.
+- **Versioning**: prefix all routes `/api/v1/...` from day one - costs nothing now, avoids a painful rename later.
+- **Errors**: thrown as a typed `AppError(code, httpStatus, message)` caught by a single Express error-handling middleware - no inline `res.status(500).json(...)` scattered through route handlers.
 - **Dates**: store and transmit all timestamps as UTC ISO-8601. Convert to society's local timezone only at the display layer (frontend), never in the DB or API. `Society` gets a `timezone` field in Phase 0 for this reason.
-- **IDs**: use UUIDs (Prisma `@default(uuid())`), not auto-increment integers — avoids leaking record counts across tenants and is safer for a public-facing API later.
+- **IDs**: use UUIDs (Prisma `@default(uuid())`), not auto-increment integers - avoids leaking record counts across tenants and is safer for a public-facing API later.
 
 ## 7. Data Lifecycle: Soft Delete
 
-- Tenant-scoped entities that matter for audit/history (`Unit`, `Membership`, `Ticket`, `Booking`, `Notice`, etc.) use a `deletedAt DateTime?` column — never hard-delete. The tenant-scope repository layer filters `deletedAt: null` by default.
+- Tenant-scoped entities that matter for audit/history (`Unit`, `Membership`, `Ticket`, `Booking`, `Notice`, etc.) use a `deletedAt DateTime?` column - never hard-delete. The tenant-scope repository layer filters `deletedAt: null` by default.
 - Hard deletes are reserved for genuinely disposable data only (e.g. expired sessions), never for anything that could appear in the `AuditLog` or a financial record.
 - This matters specifically because Section 4.4's audit trail is meaningless if the underlying rows can vanish.
 
 ## 8. Local Development Setup (Phase 0 deliverable)
 
 - `docker-compose.yml` at repo root running Postgres + Redis for local dev.
-- `.env.example` in `backend/` and `frontend/` listing every required variable (DB URL, Redis URL, JWT secret, Safepay keys placeholder, storage provider keys) — kept in sync as phases add new env vars. No feature ships without updating this file.
+- `.env.example` in `backend/` and `frontend/` listing every required variable (DB URL, Redis URL, JWT secret, Safepay keys placeholder, storage provider keys) - kept in sync as phases add new env vars. No feature ships without updating this file.
 - Root `package.json` scripts (run from repo root via npm workspaces, e.g. `npm run dev --workspace=backend`) plus convenience root scripts:
-  - `npm run dev` — runs frontend + backend concurrently (e.g. via `concurrently` or `npm-run-all`)
-  - `npm run db:migrate` — runs Prisma migration (delegates to `backend`)
-  - `npm run db:seed` — seeds one demo Society + admin + a few units for local testing (delegates to `backend`)
-  - `npm run lint` / `npm run test` — run across all workspaces
+  - `npm run dev` - runs frontend + backend concurrently (e.g. via `concurrently` or `npm-run-all`)
+  - `npm run db:migrate` - runs Prisma migration (delegates to `backend`)
+  - `npm run db:seed` - seeds one demo Society + admin + a few units for local testing (delegates to `backend`)
+  - `npm run lint` / `npm run test` - run across all workspaces
 - Single `npm install` at the repo root installs dependencies for `frontend`, `backend`, and `shared` together.
 
 ## 9. Indexing Baseline
 
-- Every table with a `societyId` column gets a composite index starting with `societyId` (e.g. `@@index([societyId, createdAt])` on high-traffic tables like `Ticket`, `AuditLog`) — since virtually every query filters by tenant first. Add this at the same time a table is created, not as a later performance pass.
+- Every table with a `societyId` column gets a composite index starting with `societyId` (e.g. `@@index([societyId, createdAt])` on high-traffic tables like `Ticket`, `AuditLog`) - since virtually every query filters by tenant first. Add this at the same time a table is created, not as a later performance pass.
 
 ## 10. Core Domain Model
 
@@ -142,11 +142,11 @@ Unit
 
 User
   id, email, name, passwordHash (or external auth id), createdAt
-  — global identity, NOT tenant-scoped directly
+  - global identity, NOT tenant-scoped directly
 
 Membership
-  id, userId, societyId, unitId (nullable — admins may not have a unit), role, status (active/revoked), createdAt
-  — this is the join table that gives a User a Role within a specific Society, optionally tied to a Unit
+  id, userId, societyId, unitId (nullable - admins may not have a unit), role, status (active/revoked), createdAt
+  - this is the join table that gives a User a Role within a specific Society, optionally tied to a Unit
 
 Role (enum, extend carefully): SUPER_ADMIN | COMMITTEE_ADMIN | RESIDENT | SECURITY_GUARD | VENDOR
 
@@ -154,9 +154,9 @@ AuditLog
   id, societyId, actorUserId, action, entityType, entityId, beforeJson, afterJson, createdAt
 ```
 
-**Key relationship rule:** A `User` can have multiple `Membership` rows (multiple societies, or multiple units within one society — e.g. owns 2 flats). All permission checks go through `Membership`, never assume a user has exactly one role.
+**Key relationship rule:** A `User` can have multiple `Membership` rows (multiple societies, or multiple units within one society - e.g. owns 2 flats). All permission checks go through `Membership`, never assume a user has exactly one role.
 
-Later phases add entities that hang off this backbone (Ticket, Vendor, Payment, Booking, VisitorPass, Notice, Vote, Document) — each references `societyId` and usually `unitId` and/or `userId`.
+Later phases add entities that hang off this backbone (Ticket, Vendor, Payment, Booking, VisitorPass, Notice, Vote, Document) - each references `societyId` and usually `unitId` and/or `userId`.
 
 ---
 
@@ -167,8 +167,8 @@ Later phases add entities that hang off this backbone (Ticket, Vendor, Payment, 
 | SUPER_ADMIN | Platform-wide | Anthropic-internal use / your own ops account, not sold to customers |
 | COMMITTEE_ADMIN | One Society | Manages units, residents, notices, tickets, approves vendors, sees all financials |
 | RESIDENT | One or more Units within a Society | Raises tickets, views notices, votes, books amenities, pays dues |
-| SECURITY_GUARD | One Society | Deferred to Phase 4 — visitor approval, gate logs |
-| VENDOR | Scoped to assigned tickets | Deferred — later phase, may not need full account in MVP |
+| SECURITY_GUARD | One Society | Deferred to Phase 4 - visitor approval, gate logs |
+| VENDOR | Scoped to assigned tickets | Deferred - later phase, may not need full account in MVP |
 
 Permission checks are role + society + (sometimes) unit scoped. Build a single `can(user, action, resource)` authorization helper in Phase 0 rather than scattering `if (role === 'X')` checks through route handlers.
 
@@ -178,7 +178,7 @@ Permission checks are role + society + (sometimes) unit scoped. Build a single `
 
 **Rule for every phase:** no deployment work, no premature optimization, no building ahead into a later phase's entities. Finish and manually test a phase's vertical slices before moving on.
 
-### Phase 0 — Foundation (no user-facing "features" yet, but everything depends on this)
+### Phase 0 - Foundation (no user-facing "features" yet, but everything depends on this)
 
 - [ ] npm workspaces scaffold: root `package.json` + `frontend`, `backend` (with `backend/prisma`), `shared`
 - [ ] Prisma schema: `Society`, `Building`, `Unit`, `User`, `Membership`, `AuditLog`
@@ -186,24 +186,24 @@ Permission checks are role + society + (sometimes) unit scoped. Build a single `
 - [ ] Tenant-scoping middleware/repository pattern in `backend/prisma`
 - [ ] `logAudit()` helper
 - [ ] `can(user, action, resource)` authorization helper
-- [ ] Auth: signup flow that creates a `Society` + first `COMMITTEE_ADMIN` `User` + `Membership` in one transaction (this is tenant onboarding — the entry point for every new customer)
-- [ ] Login/session (JWT or session-based — decide and document as ADR)
+- [ ] Auth: signup flow that creates a `Society` + first `COMMITTEE_ADMIN` `User` + `Membership` in one transaction (this is tenant onboarding - the entry point for every new customer)
+- [ ] Login/session (JWT or session-based - decide and document as ADR)
 - [ ] Resident invite flow: admin invites a person by email → creates `User` (if new) + `Membership` scoped to a `Unit`
 - [ ] Basic RBAC middleware on Express routes using the `can()` helper
 - [ ] Minimal Next.js shell: login, signup, admin dashboard stub, resident dashboard stub
 
-**Exit criteria:** A committee admin can sign up, create buildings/units, invite a resident, and the resident can log in and see an empty dashboard — with all data provably scoped to their `societyId`.
+**Exit criteria:** A committee admin can sign up, create buildings/units, invite a resident, and the resident can log in and see an empty dashboard - with all data provably scoped to their `societyId`.
 
-### Phase 1 — Core MVP (highest daily-use value)
+### Phase 1 - Core MVP (highest daily-use value)
 
 - [ ] **Notices/Announcements**: admin creates/publishes notices, residents see a feed, read receipts optional
 - [ ] **Resident Directory**: list of residents per unit/building, searchable, admin-editable
 - [ ] **Maintenance Ticketing**: resident creates ticket (category, description, photos via storage), status lifecycle (Open → Assigned → In Progress → Resolved → Closed), admin assigns to a vendor placeholder (full vendor accounts deferred), timeline/comments per ticket
-- [ ] Push/email notification stub for new notices and ticket status changes (real push infra can be simple at this stage — e.g. email via a transactional provider; defer native push)
+- [ ] Push/email notification stub for new notices and ticket status changes (real push infra can be simple at this stage - e.g. email via a transactional provider; defer native push)
 
 **Exit criteria:** A resident can raise a maintenance ticket and see it move through statuses; admin can post a notice residents actually see. This is the first demo-able "WhatsApp replacement" moment.
 
-### Phase 2 — Money
+### Phase 2 - Money
 
 - [ ] Dues/invoice generation per unit (manual or recurring rule-based)
 - [ ] Safepay integration: online payment collection, implemented behind a PaymentProvider interface (see ADR 003)
@@ -211,59 +211,59 @@ Permission checks are role + society + (sometimes) unit scoped. Build a single `
 - [ ] Payment history per unit, visible to resident and admin
 - [ ] Basic dispute/flag mechanism (resident flags a charge, admin resolves)
 
-### Phase 3 — Bookings
+### Phase 3 - Bookings
 
 - [ ] Amenity entity (clubhouse, gym, pool, etc.) per society
 - [ ] Visual calendar UI, conflict prevention at booking-creation time
-- [ ] Booking rules (max duration, advance notice, per-unit limits — configurable per society)
+- [ ] Booking rules (max duration, advance notice, per-unit limits - configurable per society)
 - [ ] Admin override/cancel
 
-### Phase 4 — Security & Visitor Management
+### Phase 4 - Security & Visitor Management
 
 - [ ] VisitorPass entity: resident pre-approves a visitor, generates QR code
-- [ ] Guard-facing minimal interface (kiosk/tablet friendly — separate lightweight route or app, decide as ADR when this phase starts)
+- [ ] Guard-facing minimal interface (kiosk/tablet friendly - separate lightweight route or app, decide as ADR when this phase starts)
 - [ ] Gate log (entry/exit timestamps tied to VisitorPass)
 - [ ] Auto-revoke access when a `Membership` is marked inactive/moved-out
 
-### Phase 5 — Governance
+### Phase 5 - Governance
 
 - [ ] Poll/Vote entity tied to a Notice or standalone
-- [ ] One-vote-per-unit enforcement (not per user — important, since a unit can have multiple residents)
+- [ ] One-vote-per-unit enforcement (not per user - important, since a unit can have multiple residents)
 - [ ] Results visibility rules (live vs after-close, configurable)
 
-### Phase 6 — Documents & Enhanced Audit
+### Phase 6 - Documents & Enhanced Audit
 
 - [ ] Document storage (society bylaws, meeting minutes, vendor contracts) via Cloudinary/S3
 - [ ] Folder/category structure per society
 - [ ] Audit trail UI (searchable/filterable view over `AuditLog`, built on infra from Phase 0)
 - [ ] Committee transition flow (export/handover of records)
 
-### Phase 7 — Engagement & Accountability
+### Phase 7 - Engagement & Accountability
 
 Deliberately sequenced ahead of the AI layer since these solve daily friction with infrastructure already in place (BullMQ/Redis jobs, existing Ticket/Membership models) rather than requiring new architecture.
 
-- [ ] **Package/Parcel Tracking**: `Parcel` entity (societyId, unitId, loggedByUserId — usually a guard, description/photo, status: Arrived → Collected, collectedByUserId, timestamps). Reuses visitor-pass infrastructure patterns from Phase 4. Resident gets notified on arrival; guard/admin marks collected.
+- [ ] **Package/Parcel Tracking**: `Parcel` entity (societyId, unitId, loggedByUserId - usually a guard, description/photo, status: Arrived → Collected, collectedByUserId, timestamps). Reuses visitor-pass infrastructure patterns from Phase 4. Resident gets notified on arrival; guard/admin marks collected.
 - [ ] **Automated Dues Reminders**: scheduled BullMQ job (not just post-overdue as currently exists from Phase 2) that checks upcoming due dates and sends a reminder notification a configurable number of days before the due date, per society settings.
-- [ ] **Vendor Ratings**: 1-5 star rating + optional comment, captured when a Maintenance Ticket transitions to Closed. Aggregated vendor rating visible to admins when assigning future tickets — directly addresses the "vendors overcharging/underdelivering" problem from the original problem statement.
-- [ ] **Admin Analytics Dashboard**: a dedicated view (not just the homepage stat tiles) showing dues collection rate over time, average ticket resolution time, ticket volume by category, and vendor performance — built as read/aggregate queries over existing data, no new core entities required.
+- [ ] **Vendor Ratings**: 1-5 star rating + optional comment, captured when a Maintenance Ticket transitions to Closed. Aggregated vendor rating visible to admins when assigning future tickets - directly addresses the "vendors overcharging/underdelivering" problem from the original problem statement.
+- [ ] **Admin Analytics Dashboard**: a dedicated view (not just the homepage stat tiles) showing dues collection rate over time, average ticket resolution time, ticket volume by category, and vendor performance - built as read/aggregate queries over existing data, no new core entities required.
 
-**Explicitly deferred to the end of this phase, not skipped**: full Safepay payment gateway completion and email verification on signup. Both are functionally important but were intentionally pushed to the very end of Phase 7's work due to the testing overhead they add (webhook testing, email delivery testing) — build and validate the four features above first, then close out Safepay integration and email verification as the last two slices of this phase before moving to Phase 8.
+**Explicitly deferred to the end of this phase, not skipped**: full Safepay payment gateway completion and email verification on signup. Both are functionally important but were intentionally pushed to the very end of Phase 7's work due to the testing overhead they add (webhook testing, email delivery testing) - build and validate the four features above first, then close out Safepay integration and email verification as the last two slices of this phase before moving to Phase 8.
 
-### Phase 8 — Safety, Staff & Automated Billing
+### Phase 8 - Safety, Staff & Automated Billing
 
 Added based on competitive research (Nizam). Sequenced before the AI layer for the same reason as Phase 7: solves real daily/safety needs with infrastructure already in place, rather than requiring new architecture.
 
 - [ ] **SOS Emergency Alerts**: resident triggers a one-tap alert (category: Medical, Fire, Security, Other) from the resident app. Instantly notifies all active Committee Admins for that society (and Security Guards, if a guard Membership exists) via the existing notification pattern, shown as a high-priority item on the admin dashboard's "Needs your attention" panel (Phase 7). Logs unit, resident, category, timestamp, and resolution status; full audit trail per Section 4.4.
-- [ ] **Transfer Clearance**: workflow triggered when a Unit's occupancy changes (move-out/ownership transfer). Checks all invoices for that unit are settled (paid, not just pending) before an admin can mark the transfer/clearance complete. Ties into the Unit/Primary Contact model from the unit-details work — updating a unit's primary contact or deactivating a Membership should surface this check, not bypass it.
-- [ ] **Staff Management**: new `Staff` entity (tenant-scoped: societyId, name, role — Guard/Cleaner/Maintenance/Other, contact info, active/inactive status). Admin CRUD for staff records. Optional read-only "who's on duty" view visible to residents. Distinct from `Vendor` (external, per-job) — Staff represents ongoing internal personnel.
-- [ ] **Targeted Notifications**: extend the existing Notice/notification system (Phase 1) so admins can target a notice to specific unit(s), a category/tag, or the whole complex (current default) — not a new system, a targeting capability added to what exists.
-- [ ] **Automated Recurring Billing Schedule**: admin configures a billing cycle (day-of-month) per society. A scheduled BullMQ job (Redis-backed, same pattern as Phase 7's dues reminder job) auto-generates invoices for all active units on that date each month and sends a payment notification at generation time. **This is distinct from Phase 7's dues reminder** — that job reminds residents before an *existing* invoice's due date; this one actually creates the recurring invoice on schedule and notifies at creation. Both jobs coexist and serve different points in the billing cycle.
+- [ ] **Transfer Clearance**: workflow triggered when a Unit's occupancy changes (move-out/ownership transfer). Checks all invoices for that unit are settled (paid, not just pending) before an admin can mark the transfer/clearance complete. Ties into the Unit/Primary Contact model from the unit-details work - updating a unit's primary contact or deactivating a Membership should surface this check, not bypass it.
+- [ ] **Staff Management**: new `Staff` entity (tenant-scoped: societyId, name, role - Guard/Cleaner/Maintenance/Other, contact info, active/inactive status). Admin CRUD for staff records. Optional read-only "who's on duty" view visible to residents. Distinct from `Vendor` (external, per-job) - Staff represents ongoing internal personnel.
+- [ ] **Targeted Notifications**: extend the existing Notice/notification system (Phase 1) so admins can target a notice to specific unit(s), a category/tag, or the whole complex (current default) - not a new system, a targeting capability added to what exists.
+- [ ] **Automated Recurring Billing Schedule**: admin configures a billing cycle (day-of-month) per society. A scheduled BullMQ job (Redis-backed, same pattern as Phase 7's dues reminder job) auto-generates invoices for all active units on that date each month and sends a payment notification at generation time. **This is distinct from Phase 7's dues reminder** - that job reminds residents before an *existing* invoice's due date; this one actually creates the recurring invoice on schedule and notifies at creation. Both jobs coexist and serve different points in the billing cycle.
 
-### Phase 9 — Platform Billing (Society Subscription)
+### Phase 9 - Platform Billing (Society Subscription)
 
-Per ADR 005: every feature is available to every society regardless of fee — no feature-gating system needed. The only thing that varies is the monthly platform fee, based on per-unit volume pricing.
+Per ADR 005: every feature is available to every society regardless of fee - no feature-gating system needed. The only thing that varies is the monthly platform fee, based on per-unit volume pricing.
 
-**Rate table** (starting point, not final — validate with real prospects). Calculated **progressively** (like income tax brackets) — each unit is charged at the rate of the band it falls into, not one flat rate applied to the whole count. This matters: an earlier bracket-method design was rejected because it let a society with slightly more units pay less overall at every band boundary — progressive calculation is strictly increasing with unit count, no cliffs:
+**Rate table** (starting point, not final - validate with real prospects). Calculated **progressively** (like income tax brackets) - each unit is charged at the rate of the band it falls into, not one flat rate applied to the whole count. This matters: an earlier bracket-method design was rejected because it let a society with slightly more units pay less overall at every band boundary - progressive calculation is strictly increasing with unit count, no cliffs:
 
 | Units | Rate |
 |---|---|
@@ -271,54 +271,54 @@ Per ADR 005: every feature is available to every society regardless of fee — n
 | 16-50 | Rs 20/unit/month |
 | 51-200 | Rs 12/unit/month |
 | 201-500 | Rs 8/unit/month |
-| 501+ | Custom quote — capped at 500 units for the formula; beyond this, no auto-invoice, flag for a manual sales conversation instead |
+| 501+ | Custom quote - capped at 500 units for the formula; beyond this, no auto-invoice, flag for a manual sales conversation instead |
 
 Example progressive totals: 50 units → Rs 700/month; 200 units → Rs 2,500/month; 500 units → Rs 4,900/month (the formulaic ceiling).
 
-- [ ] New `PlatformInvoice` entity (distinct from the resident-facing `Invoice`/dues model from Phase 2 — never confuse or merge these): societyId, billingPeriod, unitCountSnapshot, ratePerUnit, totalAmount, status (Pending/Paid/Overdue), generatedAt, paidAt, markedPaidBySuperAdminUserId.
-- [ ] Scheduled BullMQ job (monthly, same pattern as Phase 7/8 jobs): generates a `PlatformInvoice` for every active Society based on current active unit count and the progressive rate table above. Societies at or under the free threshold are skipped (no invoice generated). Societies over 500 units are also skipped from auto-invoicing — instead, flag them (e.g. a notification to the Super Admin view) for a manual custom-quote conversation.
-- [ ] Committee Admin-facing billing view: read-only invoice/payment history, current amount due, and manual payment instructions (bank details placeholder — to be filled in with real payment info before launch).
+- [ ] New `PlatformInvoice` entity (distinct from the resident-facing `Invoice`/dues model from Phase 2 - never confuse or merge these): societyId, billingPeriod, unitCountSnapshot, ratePerUnit, totalAmount, status (Pending/Paid/Overdue), generatedAt, paidAt, markedPaidBySuperAdminUserId.
+- [ ] Scheduled BullMQ job (monthly, same pattern as Phase 7/8 jobs): generates a `PlatformInvoice` for every active Society based on current active unit count and the progressive rate table above. Societies at or under the free threshold are skipped (no invoice generated). Societies over 500 units are also skipped from auto-invoicing - instead, flag them (e.g. a notification to the Super Admin view) for a manual custom-quote conversation.
+- [ ] Committee Admin-facing billing view: read-only invoice/payment history, current amount due, and manual payment instructions (bank details placeholder - to be filled in with real payment info before launch).
 - [ ] Super Admin (platform-ops) view: invoices across all societies, with a "Mark as Paid" action once payment is received outside the app.
-- [ ] Overdue handling: notification-only for now (email reminder to the admin via the existing EmailProvider) — no automatic account restriction, since billing collection isn't automated yet.
+- [ ] Overdue handling: notification-only for now (email reminder to the admin via the existing EmailProvider) - no automatic account restriction, since billing collection isn't automated yet.
 - [ ] Architecture note: the rate table should live in config, not hardcoded logic, so adjusting prices later (expected, per ADR 005) is a config change, not a code change.
 
-### Phase 10 — AI Layer
+### Phase 10 - AI Layer
 
 - [ ] Stand up `ai-service` (Python + FastAPI)
 - [ ] pgvector enabled on relevant tables (e.g. tickets, documents) for semantic search
 - [ ] Vendor auto-assignment suggestions based on ticket category/history
 - [ ] Anomaly detection on payments/maintenance costs (flag overcharging patterns)
 - [ ] Natural-language query over documents/notices (RAG)
-- [ ] Only build AI features here — do not let AI dependencies leak into earlier phases
+- [ ] Only build AI features here - do not let AI dependencies leak into earlier phases
 
 ---
 
 ## 13. Explicit Non-Goals for Now
 
 - No further infra changes (e.g. AWS migration) until explicitly requested. Frontend is live on Vercel, backend is live on Render.
-- No native mobile app — web-responsive only, PWA consideration deferred.
+- No native mobile app - web-responsive only, PWA consideration deferred.
 - No vendor self-service portal in MVP (vendors are referenced by name/contact until Phase 4+ decides otherwise).
-- No premature multi-region / horizontal scaling work — single-region Postgres is fine until there's real load.
+- No premature multi-region / horizontal scaling work - single-region Postgres is fine until there's real load.
 
 ---
 
 ## 14. Conventions for AI Agents Working on This Codebase
 
 - Read this file and the relevant `docs/adr/*.md` before starting a task.
-- Before modifying the Prisma schema, check if the change belongs in the current phase — don't add later-phase entities early "while you're in there."
+- Before modifying the Prisma schema, check if the change belongs in the current phase - don't add later-phase entities early "while you're in there."
 - Every new mutating API route: validate input with Zod → check `can()` → perform tenant-scoped DB operation → `logAudit()` → return typed response.
 - Naming: `camelCase` for TS variables/functions, `PascalCase` for types/components/Prisma models, table names singular in Prisma schema (`Unit`, not `Units`).
 - One feature = one vertical slice = one branch. Don't mix unrelated features in one PR/commit set.
 - If a task requires an architectural decision not covered here (e.g. JWT vs session auth, Cloudinary vs S3), write a short ADR in `docs/adr/` explaining the choice and rationale before implementing, then update this file's relevant section if it affects future phases.
-- Flag (don't silently resolve) any ambiguity about tenant scoping — it's the one category of bug that's unacceptable in this system.
+- Flag (don't silently resolve) any ambiguity about tenant scoping - it's the one category of bug that's unacceptable in this system.
 
 ---
 
 ## 15. Open Questions (resolve before or during Phase 0)
 
-- [x] **Storage: Cloudinary**, decided for MVP (easier setup, built-in image transforms for ticket photos, generous free tier). See `docs/adr/002-storage-provider.md`. **Requirement**: implement behind a `backend/prisma`-adjacent `StorageProvider` interface (`upload`, `getUrl`, `delete`) in Phase 0/1 — no feature calls the Cloudinary SDK directly — so migrating to S3 later per the AWS deployment plan is a contained swap, not a rewrite.
-- [x] **Auth: custom JWT (access + refresh) in Express**, decided for MVP. See `docs/adr/001-auth-mechanism.md`. Argon2 for password hashing, refresh tokens stored in Redis (revocable — required for auto-revoking moved-out residents), access token payload carries only `userId` (never role/societyId, since those must reflect live `Membership` state, not a stale token).
-- [x] **Notification delivery: Nodemailer via Gmail SMTP.** Switched from Resend after delivery issues. Implemented behind an `EmailProvider` interface (see ADR 004) so a future provider switch is contained, not a repeat of this one. Gmail SMTP is a pragmatic low-volume choice for now (see ADR 004 for the production-scale caveat) — use the same provider for all email notifications (notices, ticket-status changes, dues reminders, vendor assignment emails, password reset), not a second provider.
+- [x] **Storage: Cloudinary**, decided for MVP (easier setup, built-in image transforms for ticket photos, generous free tier). See `docs/adr/002-storage-provider.md`. **Requirement**: implement behind a `backend/prisma`-adjacent `StorageProvider` interface (`upload`, `getUrl`, `delete`) in Phase 0/1 - no feature calls the Cloudinary SDK directly - so migrating to S3 later per the AWS deployment plan is a contained swap, not a rewrite.
+- [x] **Auth: custom JWT (access + refresh) in Express**, decided for MVP. See `docs/adr/001-auth-mechanism.md`. Argon2 for password hashing, refresh tokens stored in Redis (revocable - required for auto-revoking moved-out residents), access token payload carries only `userId` (never role/societyId, since those must reflect live `Membership` state, not a stale token).
+- [x] **Notification delivery: Nodemailer via Gmail SMTP.** Switched from Resend after delivery issues. Implemented behind an `EmailProvider` interface (see ADR 004) so a future provider switch is contained, not a repeat of this one. Gmail SMTP is a pragmatic low-volume choice for now (see ADR 004 for the production-scale caveat) - use the same provider for all email notifications (notices, ticket-status changes, dues reminders, vendor assignment emails, password reset), not a second provider.
 
 ---
 
@@ -330,8 +330,12 @@ Example progressive totals: 50 units → Rs 700/month; 200 units → Rs 2,500/mo
 | 2026-07-19 | Added Redis usage, API conventions, soft-delete policy, local dev setup, and indexing baseline (self-review pass) |
 | 2026-07-19 | Resolved auth (custom JWT) and storage (Cloudinary) decisions; added ADR 001 and 002 |
 | 2026-07-19 | Switched backend hosting from Railway to Render |
-| 2026-07-19 | Added platform pricing model (ADR 005): per-unit volume pricing, no feature-gating, manual billing for now; inserted new Phase 9 — Platform Billing; AI Layer renumbered to Phase 10 |
+| 2026-07-19 | Added platform pricing model (ADR 005): per-unit volume pricing, no feature-gating, manual billing for now; inserted new Phase 9 - Platform Billing; AI Layer renumbered to Phase 10 |
 | 2026-07-19 | Simplified project structure: dropped Turborepo for plain npm workspaces (`frontend`, `backend`, `shared`) instead of `apps/`+`packages/` layout |
-| 2026-07-19 | Inserted new Phase 7 — Engagement & Accountability (parcel tracking, dues reminders, vendor ratings, admin analytics); AI Layer renumbered to Phase 8; payment gateway completion and email verification explicitly deferred to end of Phase 7 |
+| 2026-07-19 | Inserted new Phase 7 - Engagement & Accountability (parcel tracking, dues reminders, vendor ratings, admin analytics); AI Layer renumbered to Phase 8; payment gateway completion and email verification explicitly deferred to end of Phase 7 |
 | 2026-07-19 | Switched payment provider from Stripe to Safepay; added ADR 003 and PaymentProvider abstraction requirement |
-| 2026-07-19 | Inserted new Phase 8 — Safety, Staff & Automated Billing (SOS alerts, transfer clearance, staff management, targeted notifications, recurring billing schedule), based on Nizam competitive research; AI Layer renumbered to Phase 9 |
+| 2026-07-19 | Inserted new Phase 8 - Safety, Staff & Automated Billing (SOS alerts, transfer clearance, staff management, targeted notifications, recurring billing schedule), based on Nizam competitive research; AI Layer renumbered to Phase 9 |
+| 2026-09-17 | Added ADR 008 (requested as "007", which collided with the vendor ADR): off-platform payments get a `PaymentProof` entity, a resident screenshot-upload flow and an admin approve/reject queue, kept as a separate subsystem from `PaymentProvider`. Approval reuses the existing "mark invoice paid" path and records `Invoice.paymentSource = manual_proof` so gateway and manual payments report uniformly. OCR/duplicate-detection/partial payments deferred to Phase 10 |
+| 2026-09-17 | Implemented ADR 002 (Cloudinary `StorageProvider`): signed direct browser uploads (`/api/v1/uploads/signature` → Cloudinary → `/confirm`), tenant folders `omnihome/{societyId}/{resourceType}/{resourceId}`, per-purpose permission + ownership checks, and an explicit admin-only delete. Ticket photos and payment-proof screenshots migrated off local disk; documents and parcel photos still local (interface ready). `allowed_formats` is signed and enforced by Cloudinary; the byte limit is enforced on confirm because `max_file_size` is not signable; proof screenshots stay access-controlled by streaming through the API rather than exposing a provider URL |
+| 2026-09-17 | Added ADR 007: vendor records become a first-class tenant-scoped entity (`Vendor`, E.164 phone) linked from `Ticket.vendorId`, with admin autocomplete + inline create on the assignment form and a manual `wa.me` hand-off reusing the emailed magic link. No WhatsApp API/BSP integration, no automated sends - explicitly out of scope until a future ADR |
+| 2026-09-17 | Amended ADR 007 (contact flexibility): a vendor needs **at least one** of email/phone rather than both. Assignment emails only when an email exists (never fails on a missing one) and reports `vendorLinkSent` separately from `vendorTicketUrl`, so a phone-only vendor is never shown as notified. Manual `wa.me` hand-off unchanged |

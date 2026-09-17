@@ -17,7 +17,7 @@ describe('POST /api/v1/notices', () => {
       .post('/api/v1/notices')
       .set('x-access-token', 'invalid-token')
       .send({ title: '', content: 'Content' });
-    // Either 401 (invalid token) or 400 (validation) — both acceptable
+    // Either 401 (invalid token) or 400 (validation) - both acceptable
     expect([401, 400]).toContain(res.status);
   });
 });

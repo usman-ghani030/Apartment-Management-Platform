@@ -12,7 +12,7 @@ const port = process.env.PORT || 4000;
 
 app.listen(port, () => {
   console.log(`API Server listening at http://localhost:${port}`);
-  // Fire-and-forget: never block boot on Redis being down — the queue module
+  // Fire-and-forget: never block boot on Redis being down - the queue module
   // handles unavailability gracefully and the API keeps working regardless.
   void startReminderQueue();
   void startBillingQueue();

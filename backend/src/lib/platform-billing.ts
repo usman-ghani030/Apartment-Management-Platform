@@ -10,13 +10,13 @@ import {
 import type { PlatformBandLine } from '@apartment/shared';
 
 /**
- * Platform Billing (Phase 9, ADR 006) — societies paying the PLATFORM.
+ * Platform Billing (Phase 9, ADR 006) - societies paying the PLATFORM.
  *
  * Entirely separate from resident dues (`lib/recurring-billing.ts`, Phase 2):
  * different payer (the society), different recipient (the platform), different
  * entity (PlatformInvoice vs Invoice). Never merge the two systems.
  *
- * Rate table lives in src/config/platform-pricing.ts — config change, not code.
+ * Rate table lives in src/config/platform-pricing.ts - config change, not code.
  *
  * This module is intentionally free of Redis/BullMQ imports so it can be unit
  * tested directly; the queue worker in src/queue/ calls it on a schedule.
@@ -47,7 +47,7 @@ export interface PlatformBillingResult {
  * period. Idempotent: the unique (societyId, billingPeriod) constraint plus an
  * upfront existence check means running twice never duplicates an invoice.
  *
- * `dryRun` computes everything but writes nothing (and creates no flags) —
+ * `dryRun` computes everything but writes nothing (and creates no flags) -
  * used for the first real run's sanity check and for tests.
  *
  * - ≤15 active units  → skipped entirely (no zero-amount invoice noise)
@@ -81,7 +81,7 @@ export async function generatePlatformInvoices(
     result.scannedSocieties++;
 
     try {
-      // Active unit count — same definition the rest of the app uses
+      // Active unit count - same definition the rest of the app uses
       // (soft-delete filtered; Unit.deletedAt === null).
       const unitCount = await prisma.unit.count({
         where: { societyId: society.id, deletedAt: null },
@@ -93,7 +93,7 @@ export async function generatePlatformInvoices(
         continue;
       }
 
-      // 501+ units: custom quote only — never auto-invoice. One flag per
+      // 501+ units: custom quote only - never auto-invoice. One flag per
       // society per period (unique constraint; race-safe via P2002).
       if (requiresCustomQuote(unitCount)) {
         result.customQuoteFlags++;
@@ -104,7 +104,7 @@ export async function generatePlatformInvoices(
               societyId: society.id,
               billingPeriod,
               unitCountSnapshot: unitCount,
-              note: `Society has ${unitCount} active units — exceeds the ${PLATFORM_PRICING.autoInvoiceCap}-unit auto-invoice cap. Manual custom quote required.`,
+              note: `Society has ${unitCount} active units - exceeds the ${PLATFORM_PRICING.autoInvoiceCap}-unit auto-invoice cap. Manual custom quote required.`,
             },
           });
           await logAudit({
@@ -117,7 +117,7 @@ export async function generatePlatformInvoices(
           });
         } catch (err) {
           if ((err as any).code === 'P2002') {
-            // Flag already exists for this society+period — fine.
+            // Flag already exists for this society+period - fine.
           } else {
             throw err;
           }
@@ -146,7 +146,7 @@ export async function generatePlatformInvoices(
       if (dryRun) {
         result.created++; // would-create count in dry-run mode
         console.log(
-          `[PlatformBilling] DRY RUN — ${society.name} (${unitCount} units, ${billingPeriod}): would create invoice Rs ${calc.totalRupees}`
+          `[PlatformBilling] DRY RUN - ${society.name} (${unitCount} units, ${billingPeriod}): would create invoice Rs ${calc.totalRupees}`
         );
         continue;
       }
@@ -182,7 +182,7 @@ export async function generatePlatformInvoices(
       );
     } catch (err) {
       if ((err as any).code === 'P2002') {
-        // Lost a race (concurrent run) — the invoice already exists.
+        // Lost a race (concurrent run) - the invoice already exists.
         result.skippedExisting++;
       } else {
         const msg = `${society.name}: ${err instanceof Error ? err.message : 'unknown error'}`;
@@ -205,7 +205,7 @@ export interface PlatformOverdueResult {
 /**
  * Mark unpaid platform invoices whose due date has passed as OVERDUE and email
  * a reminder to each society's Committee Admins via the shared EmailProvider
- * (ADR 004). Notification only — nothing is restricted (ADR 006).
+ * (ADR 004). Notification only - nothing is restricted (ADR 006).
  */
 export async function markOverduePlatformInvoices(
   now: Date = new Date()
@@ -265,16 +265,16 @@ export async function markOverduePlatformInvoices(
               `was due on ${invoice.dueDate.toISOString().slice(0, 10)} and is now overdue.\n\n` +
               `Please arrange the bank transfer at your earliest convenience. Bank details are available ` +
               `on the Platform billing page of your dashboard. Your society's access to features is not ` +
-              `affected at this stage.\n\n— The OmniHome team`,
+              `affected at this stage.\n\n- The OmniHome team`,
             html:
               `<p>Dear ${admin.user.name || 'Committee Admin'},</p>` +
               `<p>Your OmniHome platform invoice for <strong>${periodLabel}</strong> ` +
               `(Rs ${totalRs.toLocaleString()}) was due on ` +
               `${invoice.dueDate.toISOString().slice(0, 10)} and is now <strong>overdue</strong>.</p>` +
-              `<p>Please arrange the bank transfer at your earliest convenience — bank details are on ` +
+              `<p>Please arrange the bank transfer at your earliest convenience - bank details are on ` +
               `the Platform billing page of your dashboard. Your society's access to features is not ` +
               `affected at this stage.</p>` +
-              `<p>— The OmniHome team</p>`,
+              `<p>- The OmniHome team</p>`,
           });
           result.remindersSent++;
         } catch (emailErr) {
@@ -298,7 +298,7 @@ export async function markOverduePlatformInvoices(
 }
 
 /**
- * Super Admin marks an invoice paid (the ONLY path to PAID — no self-service
+ * Super Admin marks an invoice paid (the ONLY path to PAID - no self-service
  * for Committee Admins). Returns the updated invoice id, or null if it was
  * already paid (idempotent double-click protection at the caller's option).
  */

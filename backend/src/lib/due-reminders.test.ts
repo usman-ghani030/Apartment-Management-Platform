@@ -9,7 +9,7 @@ vi.mock('../lib/prisma', () => ({
   },
 }));
 
-// notifications.ts logs to console in non-production — silence it in tests.
+// notifications.ts logs to console in non-production - silence it in tests.
 vi.spyOn(console, 'log').mockImplementation(() => {});
 vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -59,7 +59,7 @@ describe('sendDueReminders', () => {
 
   it('does not remind for invoices due beyond the window', async () => {
     (prisma.society.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([makeSociety('s1', 3)]);
-    // 10 days out — outside the 3-day window, so the query should exclude it.
+    // 10 days out - outside the 3-day window, so the query should exclude it.
     (prisma.invoice.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
     const result = await sendDueReminders(NOW);

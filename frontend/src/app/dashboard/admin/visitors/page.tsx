@@ -2,20 +2,67 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, QrCode, Search, CheckCircle, XCircle, Phone, User, Car, Building2, Clock } from 'lucide-react';
+import {
+  ArrowLeft, QrCode, Search, CheckCircle2, XCircle, Phone, User, Car,
+  Building2, Clock, X, Mail, Scan, CalendarDays, FileText, ChevronRight,
+} from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
+import { Modal } from '@/components/ui/Modal';
 import { ApiError, apiGet, apiPost, apiPatch } from '@/lib/api';
 import type { VisitorPassResponse } from '@apartment/shared';
 
-const STATUS_STYLES: Record<string, string> = {
-  PENDING: 'bg-yellow-500/10 text-yellow-400',
-  APPROVED: 'bg-blue-500/10 text-blue-400',
-  CHECKED_IN: 'bg-green-500/10 text-green-400',
-  CHECKED_OUT: 'bg-gray-500/10 text-gray-700',
-  EXPIRED: 'bg-red-500/10 text-red-400',
-  CANCELLED: 'bg-red-500/10 text-red-400',
+// Status drives the accent bar, icon chip and pill so the queue reads at a glance.
+const STATUS_META: Record<string, { pill: string; bar: string; chip: string; label: string }> = {
+  PENDING: {
+    pill: 'bg-amber-50 text-amber-700 ring-amber-200/70',
+    bar: 'bg-amber-400',
+    chip: 'from-amber-400 to-amber-500 ring-amber-200',
+    label: 'Pending',
+  },
+  APPROVED: {
+    pill: 'bg-accent-50 text-accent-700 ring-accent-200/70',
+    bar: 'bg-accent-500',
+    chip: 'from-accent-500 to-accent-600 ring-accent-200',
+    label: 'Approved',
+  },
+  CHECKED_IN: {
+    pill: 'bg-emerald-50 text-emerald-700 ring-emerald-200/70',
+    bar: 'bg-emerald-500',
+    chip: 'from-emerald-500 to-emerald-600 ring-emerald-200',
+    label: 'Checked in',
+  },
+  CHECKED_OUT: {
+    pill: 'bg-gray-100 text-gray-600 ring-gray-200/70',
+    bar: 'bg-gray-300',
+    chip: 'from-gray-400 to-gray-500 ring-gray-200',
+    label: 'Checked out',
+  },
+  EXPIRED: {
+    pill: 'bg-red-50 text-red-700 ring-red-200/70',
+    bar: 'bg-red-400',
+    chip: 'from-red-400 to-red-500 ring-red-200',
+    label: 'Expired',
+  },
+  CANCELLED: {
+    pill: 'bg-gray-100 text-gray-600 ring-gray-200/70',
+    bar: 'bg-gray-300',
+    chip: 'from-gray-400 to-gray-500 ring-gray-200',
+    label: 'Cancelled',
+  },
 };
 
+const FALLBACK_STATUS = STATUS_META.CHECKED_OUT;
+const statusMeta = (status: string) => STATUS_META[status] || FALLBACK_STATUS;
+
 const STATUS_ORDER = ['PENDING', 'APPROVED', 'CHECKED_IN', 'CHECKED_OUT', 'EXPIRED', 'CANCELLED'];
+
+const FILTERS = ['ALL', 'PENDING', 'APPROVED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED'];
+
+const humanise = (value: string) =>
+  value.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
+
+const formatDateTime = (value: string) =>
+  `${new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at ${new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
 export default function AdminVisitorsPage() {
   const router = useRouter();
@@ -25,7 +72,9 @@ export default function AdminVisitorsPage() {
   const [success, setSuccess] = useState('');
   const [filter, setFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showQr, setShowQr] = useState<string | null>(null);
+  // The pass detail (including its QR) opens in a dialog, so the list never
+  // shifts height when someone opens a pass.
+  const [selected, setSelected] = useState<VisitorPassResponse | null>(null);
 
   const fetchPasses = useCallback(async () => {
     try {
@@ -34,17 +83,26 @@ export default function AdminVisitorsPage() {
       setPasses(data || []);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) router.push('/login');
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, [router, filter]);
 
   useEffect(() => { fetchPasses(); }, [fetchPasses]);
+
+  // Keep an open dialog in sync after an action changes the pass.
+  const refreshSelected = async (id: string) => {
+    const fresh = await apiGet<VisitorPassResponse>(`/api/v1/visitors/${id}`).catch(() => null);
+    if (fresh) setSelected(fresh);
+  };
 
   const handleApprove = async (id: string) => {
     setError(''); setSuccess('');
     try {
       await apiPatch(`/api/v1/visitors/${id}`, { status: 'APPROVED' });
-      setSuccess('Pass approved successfully');
-      fetchPasses();
+      setSuccess('Pass approved');
+      await fetchPasses();
+      await refreshSelected(id);
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
     }
@@ -55,7 +113,8 @@ export default function AdminVisitorsPage() {
     try {
       await apiPost(`/api/v1/visitors/${id}/cancel`);
       setSuccess('Pass cancelled');
-      fetchPasses();
+      await fetchPasses();
+      await refreshSelected(id);
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
     }
@@ -69,17 +128,27 @@ export default function AdminVisitorsPage() {
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
-  const filteredPasses = searchQuery
+  const q = searchQuery.trim().toLowerCase();
+  const filteredPasses = q
     ? sortedPasses.filter(
         (p) =>
-          p.visitorName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          p.visitorPhone.includes(searchQuery) ||
-          p.unitNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          p.residentName.toLowerCase().includes(searchQuery.toLowerCase())
+          p.visitorName.toLowerCase().includes(q) ||
+          p.visitorPhone.includes(q) ||
+          p.unitNumber.toLowerCase().includes(q) ||
+          p.residentName.toLowerCase().includes(q)
       )
     : sortedPasses;
 
-  if (loading) return <div className="min-h-screen bg-white text-gray-900 flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-accent-500 border-t-transparent rounded-full" /></div>;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#f6f8fc] text-gray-900 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-accent-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-body-sm text-gray-500">Loading visitor passes...</p>
+        </div>
+      </div>
+    );
+  }
 
   const stats = {
     total: passes.length,
@@ -88,182 +157,350 @@ export default function AdminVisitorsPage() {
     checkedIn: passes.filter((p) => p.status === 'CHECKED_IN').length,
   };
 
+  const selectedMeta = selected ? statusMeta(selected.status) : FALLBACK_STATUS;
+
   return (
-    <div className="min-h-screen bg-white text-gray-900">
+    <div className="min-h-screen bg-[#f6f8fc] text-gray-900">
       <main className="max-w-6xl mx-auto px-6 py-8">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <button onClick={() => router.push('/dashboard/admin')} className="p-2 hover:bg-gray-50 rounded-lg transition-colors">
-            <ArrowLeft className="w-5 h-5 text-gray-700" />
+        <div className="mb-8 flex flex-wrap items-center gap-4">
+          <button
+            onClick={() => router.push('/dashboard/admin')}
+            aria-label="Back to dashboard"
+            className="rounded-xl p-2 text-gray-500 transition-colors hover:bg-white hover:text-gray-900"
+          >
+            <ArrowLeft className="w-5 h-5" />
           </button>
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold text-gray-900">Visitor Management</h1>
-            <p className="text-gray-700 text-sm">Monitor and manage all visitor passes</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-display font-bold text-gray-900">Visitors</h1>
+            <p className="mt-0.5 text-body-sm text-gray-500">
+              Every pass residents created, and what the gate sees.
+            </p>
           </div>
+          <button
+            onClick={() => router.push('/dashboard/guard')}
+            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-body-sm font-medium text-gray-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:border-accent-200 hover:bg-accent-50/50"
+          >
+            <Scan className="w-4 h-4" /> Open security gate
+          </button>
         </div>
+
+        {/* Banners */}
+        {error && (
+          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3.5">
+            <XCircle className="mt-0.5 w-4 h-4 flex-shrink-0 text-red-600" />
+            <p className="flex-1 text-body-sm text-red-700">{error}</p>
+            <button onClick={() => setError('')} aria-label="Dismiss" className="rounded-lg p-1 text-red-400 transition-colors hover:bg-red-100 hover:text-red-700">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+        {success && (
+          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5">
+            <CheckCircle2 className="mt-0.5 w-4 h-4 flex-shrink-0 text-emerald-600" />
+            <p className="flex-1 text-body-sm text-emerald-700">{success}</p>
+            <button onClick={() => setSuccess('')} aria-label="Dismiss" className="rounded-lg p-1 text-emerald-500 transition-colors hover:bg-emerald-100 hover:text-emerald-700">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 border border-gray-200">
-            <p className="text-xs text-gray-700">Total Passes</p>
-            <p className="text-2xl font-bold mt-1">{stats.total}</p>
-          </div>
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 border border-yellow-500/10">
-            <p className="text-xs text-yellow-400">Pending</p>
-            <p className="text-2xl font-bold mt-1">{stats.pending}</p>
-          </div>
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 border border-blue-500/10">
-            <p className="text-xs text-blue-400">Approved</p>
-            <p className="text-2xl font-bold mt-1">{stats.approved}</p>
-          </div>
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 border border-green-500/10">
-            <p className="text-xs text-green-400">Checked In</p>
-            <p className="text-2xl font-bold mt-1">{stats.checkedIn}</p>
-          </div>
+        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {[
+            { icon: QrCode, label: 'Total passes', value: stats.total, color: 'text-accent-600', bg: 'bg-accent-50' },
+            { icon: Clock, label: 'Pending', value: stats.pending, color: 'text-amber-600', bg: 'bg-amber-50' },
+            { icon: CheckCircle2, label: 'Approved', value: stats.approved, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+            { icon: User, label: 'Checked in', value: stats.checkedIn, color: 'text-purple-600', bg: 'bg-purple-50' },
+          ].map((stat) => (
+            <div
+              key={stat.label}
+              className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-shadow hover:shadow-md"
+            >
+              <div className="mb-2.5 flex items-center gap-2.5">
+                <div className={`flex h-8 w-8 items-center justify-center rounded-xl ${stat.bg}`}>
+                  <stat.icon className={`w-4 h-4 ${stat.color}`} />
+                </div>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-400">{stat.label}</span>
+              </div>
+              <p className="text-display font-display text-gray-900">{stat.value}</p>
+            </div>
+          ))}
         </div>
 
-        {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
-        {success && <div className="bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-lg px-4 py-3 mb-6">{success}</div>}
-
-        {/* Search & Filter */}
-        <div className="flex flex-col sm:flex-row gap-3 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-700" />
+        {/* Search + filter */}
+        <div className="mb-6 rounded-2xl border border-gray-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 w-4 h-4 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search by visitor name, phone, unit, or resident..."
-              className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-10 pr-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:border-accent-500/50"
+              aria-label="Search visitor passes"
+              className="w-full rounded-xl border border-gray-200/80 bg-gray-50 py-2.5 pl-10 pr-10 text-body-sm text-gray-900 placeholder-gray-400 transition-all focus:border-accent-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-accent-500/10"
             />
-          </div>
-          <div className="flex gap-1 bg-gray-50 rounded-lg p-0.5 overflow-x-auto">
-            {['ALL', 'PENDING', 'APPROVED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED'].map((s) => (
+            {searchQuery && (
               <button
-                key={s}
-                onClick={() => setFilter(s)}
-                className={`text-xs px-3 py-1.5 rounded-md transition-all whitespace-nowrap ${
-                  filter === s ? 'bg-accent-600 text-white' : 'text-gray-700 hover:text-gray-900'
-                }`}
+                onClick={() => setSearchQuery('')}
+                aria-label="Clear search"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
               >
-                {s === 'ALL' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, ' ')}
+                <X className="w-3.5 h-3.5" />
               </button>
-            ))}
+            )}
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4">
+            <span className="mr-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">Status</span>
+            {FILTERS.map((s) => {
+              const active = filter === s;
+              return (
+                <button
+                  key={s}
+                  onClick={() => setFilter(s)}
+                  aria-pressed={active}
+                  className={`inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-body-sm font-medium transition-all duration-200 ${
+                    active
+                      ? 'bg-accent-600 text-white shadow-[0_8px_20px_-10px_rgba(37,99,235,1)]'
+                      : 'bg-gray-50 text-gray-600 ring-1 ring-gray-200/80 hover:bg-gray-100 hover:text-gray-900'
+                  }`}
+                >
+                  {s === 'ALL' ? 'All' : humanise(s)}
+                  {active && <span className="text-[11px] font-semibold tabular-nums text-white/75">{passes.length}</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Passes List */}
+        {/* Passes list */}
         {filteredPasses.length === 0 ? (
-          <div className="text-center py-20">
-            <QrCode className="w-12 h-12 text-gray-700 mx-auto mb-4" />
-            <p className="text-gray-700">No visitor passes found</p>
-            <p className="text-gray-700 text-sm mt-1">
-              {filter !== 'ALL' ? 'Try a different filter' : 'Residents will create passes when they expect visitors'}
+          <div className="rounded-2xl border border-gray-200/80 bg-white p-16 text-center shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent-50">
+              <QrCode className="w-7 h-7 text-accent-500" />
+            </div>
+            <h3 className="mb-2 text-title font-display text-gray-900">
+              {q ? 'No passes match your search' : filter !== 'ALL' ? `No ${humanise(filter).toLowerCase()} passes` : 'No visitor passes yet'}
+            </h3>
+            <p className="mx-auto max-w-sm text-body-sm text-gray-500">
+              {q
+                ? `Nothing matched “${searchQuery.trim()}”. Try another name, phone or unit.`
+                : filter !== 'ALL'
+                  ? 'Try another status filter to see the rest of the queue.'
+                  : 'Residents create passes when they expect a visitor, and they show up here for approval.'}
             </p>
           </div>
         ) : (
           <div className="space-y-3">
-            {filteredPasses.map((p) => (
-              <div key={p.id} className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 border border-gray-200 hover:border-accent-500/20 transition-colors">
-                <div className="flex items-start justify-between gap-4">
-                  {/* Left: Visitor info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${STATUS_STYLES[p.status] || ''}`}>
-                        {p.status.replace(/_/g, ' ')}
-                      </span>
-                      <span className="text-sm font-semibold text-gray-900">{p.visitorName}</span>
+            {filteredPasses.map((p) => {
+              const meta = statusMeta(p.status);
+              return (
+                // A div (not a button) because the card holds its own action
+                // buttons - nesting interactive elements inside a button is invalid.
+                <div
+                  key={p.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelected(p)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelected(p);
+                    }
+                  }}
+                  className="group relative block w-full cursor-pointer overflow-hidden rounded-2xl border border-gray-200/80 bg-white text-left shadow-[0_1px_3px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-0.5 hover:border-accent-200 hover:shadow-[0_8px_24px_-8px_rgba(37,99,235,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40"
+                >
+                  <span className={`absolute left-0 top-0 bottom-0 w-1 ${meta.bar} rounded-l-2xl transition-all duration-300 group-hover:w-1.5`} aria-hidden="true" />
+
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-4 py-5 pl-6 pr-5">
+                    <div className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${meta.chip} ring-1 transition-transform duration-300 group-hover:scale-110`}>
+                      <User className="w-5 h-5 text-white" />
                     </div>
 
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-700">
-                      <span className="flex items-center gap-1">
-                        <Phone className="w-3 h-3" /> {p.visitorPhone}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Building2 className="w-3 h-3" /> Unit {p.unitNumber}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <User className="w-3 h-3" /> {p.residentName}
-                      </span>
-                      {p.vehicleNumber && (
-                        <span className="flex items-center gap-1">
-                          <Car className="w-3 h-3" /> {p.vehicleNumber}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <h3 className="truncate text-title-sm font-display text-gray-900 transition-colors duration-200 group-hover:text-accent-700">
+                          {p.visitorName}
+                        </h3>
+                        <span className={`inline-flex flex-shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${meta.pill}`}>
+                          {meta.label}
                         </span>
-                      )}
-                      {p.purpose && <span>· {p.purpose}</span>}
-                    </div>
+                        {p.purpose && (
+                          <span className="inline-flex flex-shrink-0 items-center rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-600 ring-1 ring-gray-200/70">
+                            {p.purpose}
+                          </span>
+                        )}
+                      </div>
 
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-[10px] text-gray-700">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" /> Created {new Date(p.createdAt).toLocaleDateString()}
-                      </span>
-                      {p.expiresAt && (
-                        <span>
-                          Expires {new Date(p.expiresAt).toLocaleDateString()}
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-gray-50 px-2 py-0.5 text-caption-xs text-gray-500">
+                          <Phone className="w-3 h-3 text-gray-400" />
+                          {p.visitorPhone}
                         </span>
-                      )}
+                        <span className="inline-flex items-center gap-1 rounded-md bg-gray-50 px-2 py-0.5 text-caption-xs text-gray-500">
+                          <Building2 className="w-3 h-3 text-gray-400" />
+                          Unit {p.unitNumber}
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-md bg-gray-50 px-2 py-0.5 text-caption-xs text-gray-500">
+                          <User className="w-3 h-3 text-gray-400" />
+                          {p.residentName}
+                        </span>
+                        {p.vehicleNumber && (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-gray-50 px-2 py-0.5 text-caption-xs text-gray-500">
+                            <Car className="w-3 h-3 text-gray-400" />
+                            {p.vehicleNumber}
+                          </span>
+                        )}
+                        <span className="inline-flex items-center gap-1 rounded-md bg-gray-50 px-2 py-0.5 text-caption-xs text-gray-500">
+                          <CalendarDays className="w-3 h-3 text-gray-400" />
+                          {formatDateTime(p.createdAt)}
+                        </span>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Right: Actions */}
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <button
-                      onClick={() => setShowQr(showQr === p.id ? null : p.id)}
-                      className={`p-2 rounded-lg transition-all ${
-                        showQr === p.id ? 'bg-accent-500/20 text-accent-400' : 'hover:bg-gray-50 text-gray-700'
-                      }`}
-                      title="Show QR Code"
-                    >
-                      <QrCode className="w-4 h-4" />
-                    </button>
-
-                    {p.status === 'PENDING' && (
-                      <>
-                        <button
-                          onClick={() => handleApprove(p.id)}
-                          className="flex items-center gap-1 text-xs bg-green-600 hover:bg-green-500 text-white rounded-lg px-3 py-1.5 transition-all"
-                        >
-                          <CheckCircle className="w-3 h-3" /> Approve
-                        </button>
+                    <div className="flex w-full items-center justify-end gap-2 sm:w-auto sm:flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => setSelected(p)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-accent-200 bg-accent-50 px-3 py-2 text-body-sm font-medium text-accent-700 transition-all hover:border-accent-300 hover:bg-accent-100"
+                      >
+                        <QrCode className="w-3.5 h-3.5" /> Details
+                      </button>
+                      {p.status === 'PENDING' && (
+                        <>
+                          <button
+                            onClick={() => handleApprove(p.id)}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-body-sm font-medium text-white transition-all hover:bg-emerald-700"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Approve
+                          </button>
+                          <button
+                            onClick={() => handleCancel(p.id)}
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-body-sm font-medium text-gray-600 transition-all hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                          >
+                            <XCircle className="w-3.5 h-3.5" /> Reject
+                          </button>
+                        </>
+                      )}
+                      {(p.status === 'APPROVED' || p.status === 'CHECKED_IN') && (
                         <button
                           onClick={() => handleCancel(p.id)}
-                          className="flex items-center gap-1 text-xs bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg px-3 py-1.5 transition-all"
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-body-sm font-medium text-gray-600 transition-all hover:border-red-200 hover:bg-red-50 hover:text-red-600"
                         >
-                          <XCircle className="w-3 h-3" /> Reject
+                          <XCircle className="w-3.5 h-3.5" /> Cancel
                         </button>
-                      </>
-                    )}
-                    {(p.status === 'APPROVED' || p.status === 'CHECKED_IN') && (
-                      <button
-                        onClick={() => handleCancel(p.id)}
-                        className="text-xs text-red-400 hover:text-red-300 px-2 py-1.5 hover:bg-red-500/10 rounded-lg transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    )}
+                      )}
+                      <ChevronRight className="hidden w-4 h-4 flex-shrink-0 text-gray-300 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-accent-600 sm:block" />
+                    </div>
                   </div>
                 </div>
-
-                {/* QR Code */}
-                {showQr === p.id && (
-                  <div className="mt-4 pt-4 border-t border-gray-200 flex items-center gap-6">
-                    <div className="bg-white p-2 rounded-lg">
-                      <QrCode className="w-32 h-32 text-black" />
-                    </div>
-                    <div className="text-xs text-gray-700 space-y-1">
-                      <p className="font-mono text-gray-900">Token: {p.qrToken}</p>
-                      <p>Status: <span className={p.status === 'APPROVED' ? 'text-green-400' : p.status === 'PENDING' ? 'text-yellow-400' : ''}>{p.status.replace(/_/g, ' ')}</span></p>
-                      {p.approvedAt && <p>Approved: {new Date(p.approvedAt).toLocaleString()}</p>}
-                      <p>Created: {new Date(p.createdAt).toLocaleString()}</p>
-                      {p.expiresAt && <p>Expires: {new Date(p.expiresAt).toLocaleString()}</p>}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </main>
+
+      {/* ── Pass detail ─────────────────────────────────────────────── */}
+      <Modal
+        open={!!selected}
+        onClose={() => setSelected(null)}
+        icon={User}
+        title={selected?.visitorName || 'Visitor pass'}
+        subtitle={selected ? `Unit ${selected.unitNumber} · hosted by ${selected.residentName}` : undefined}
+        size="md"
+      >
+        {selected && (
+          <div className="space-y-5">
+            {/* Status row */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${selectedMeta.pill}`}>
+                {selectedMeta.label}
+              </span>
+              {selected.approvedAt && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600 ring-1 ring-gray-200/70">
+                  <CheckCircle2 className="w-3 h-3" /> Approved {formatDateTime(selected.approvedAt)}
+                </span>
+              )}
+              {selected.expiresAt && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600 ring-1 ring-gray-200/70">
+                  <Clock className="w-3 h-3" /> Expires {formatDateTime(selected.expiresAt)}
+                </span>
+              )}
+            </div>
+
+            {/* QR + token */}
+            <div className="flex flex-wrap items-center gap-5 rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
+              <div className="rounded-xl bg-white p-2.5 shadow-[0_1px_3px_rgba(15,23,42,0.08)] ring-1 ring-gray-200/70">
+                <QRCodeSVG value={selected.qrToken} size={132} level="M" includeMargin />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">Gate token</p>
+                <p className="mt-1 break-all font-mono text-caption-xs text-gray-700">{selected.qrToken}</p>
+                <p className="mt-2 text-caption-xs text-gray-400">
+                  The guard scans this at the gate to check the visitor in or out.
+                </p>
+              </div>
+            </div>
+
+            {/* Details */}
+            <div className="divide-y divide-gray-100 rounded-xl border border-gray-100 px-4">
+              {[
+                { icon: Phone, label: 'Phone', value: selected.visitorPhone },
+                ...(selected.visitorEmail ? [{ icon: Mail, label: 'Email', value: selected.visitorEmail }] : []),
+                ...(selected.purpose ? [{ icon: FileText, label: 'Purpose', value: selected.purpose }] : []),
+                ...(selected.vehicleNumber ? [{ icon: Car, label: 'Vehicle', value: selected.vehicleNumber }] : []),
+                { icon: Building2, label: 'Unit', value: selected.unitNumber },
+                { icon: User, label: 'Hosted by', value: selected.residentName },
+                { icon: CalendarDays, label: 'Created', value: formatDateTime(selected.createdAt) },
+                ...(selected.expectedArrival ? [{ icon: Clock, label: 'Expected arrival', value: formatDateTime(selected.expectedArrival) }] : []),
+                ...(selected.expectedDeparture ? [{ icon: Clock, label: 'Expected departure', value: formatDateTime(selected.expectedDeparture) }] : []),
+              ].map((row) => (
+                <div key={row.label} className="flex items-center justify-between gap-4 py-2.5">
+                  <span className="inline-flex items-center gap-2 text-caption-xs font-semibold uppercase tracking-[0.16em] text-gray-400">
+                    <row.icon className="w-3.5 h-3.5" />
+                    {row.label}
+                  </span>
+                  <span className="text-right text-body-sm font-medium text-gray-900">{row.value}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-wrap gap-3 pt-1">
+              {selected.status === 'PENDING' && (
+                <>
+                  <button
+                    onClick={() => handleApprove(selected.id)}
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-body-sm font-medium text-white transition-all hover:bg-emerald-700"
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> Approve pass
+                  </button>
+                  <button
+                    onClick={() => handleCancel(selected.id)}
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-2.5 text-body-sm font-medium text-gray-600 transition-all hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                  >
+                    <XCircle className="w-4 h-4" /> Reject
+                  </button>
+                </>
+              )}
+              {(selected.status === 'APPROVED' || selected.status === 'CHECKED_IN') && (
+                <button
+                  onClick={() => handleCancel(selected.id)}
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-2.5 text-body-sm font-medium text-gray-600 transition-all hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                >
+                  <XCircle className="w-4 h-4" /> Cancel pass
+                </button>
+              )}
+              <button
+                onClick={() => setSelected(null)}
+                className="inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-body-sm font-medium text-gray-700 transition-all hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

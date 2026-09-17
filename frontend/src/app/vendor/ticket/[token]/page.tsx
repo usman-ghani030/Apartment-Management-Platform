@@ -9,7 +9,7 @@ import { ApiError, API_BASE, vendorPortal } from '@/lib/api';
 // Public vendor ticket page (no login).
 //
 // The token in the emailed link is the sole credential, and the backend only
-// ever exposes the single ticket that token was issued for — so this page shows
+// ever exposes the single ticket that token was issued for - so this page shows
 // job details only (never resident contact info or anything financial).
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -75,7 +75,7 @@ export default function VendorTicketPage() {
       setConfirming(false);
       setNotice(
         status === 'RESOLVED'
-          ? 'Thanks — this job is marked resolved. The society will review and close the ticket.'
+          ? 'Thanks - this job is marked resolved. The society will review and close the ticket.'
           : 'Marked as in progress.'
       );
     } catch (err) {
@@ -97,7 +97,7 @@ export default function VendorTicketPage() {
     <div className="min-h-screen bg-gray-50 text-gray-900">
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-2xl mx-auto px-4 h-16 flex items-center gap-2.5">
-          <img src="/logo3.png" alt="OmniHome" className="h-16 w-[52px] object-cover object-center flex-shrink-0" />
+          <img src="/logo3.png" alt="OmniHome" className="h-8 w-auto object-contain flex-shrink-0" />
           <span className="text-title-sm font-display text-gray-900 whitespace-nowrap">
             Omni<span className="text-accent-600">Home</span>
           </span>
@@ -214,7 +214,7 @@ export default function VendorTicketPage() {
                         {updating === status
                           ? 'Saving…'
                           : status === 'RESOLVED' && confirming
-                            ? 'Confirm — job is complete'
+                            ? 'Confirm - job is complete'
                             : ACTION_LABELS[status]}
                       </button>
                     )
@@ -239,14 +239,14 @@ export default function VendorTicketPage() {
               <div className="border-t border-gray-200 pt-5">
                 <p className="text-body-sm text-gray-600">
                   {ticket.status === 'RESOLVED'
-                    ? 'This job is marked resolved — no further action is needed from you.'
+                    ? 'This job is marked resolved - no further action is needed from you.'
                     : 'There are no status updates available for this ticket right now.'}
                 </p>
               </div>
             )}
 
             <p className="text-caption text-gray-400 mt-6">
-              This link is personal to you. Please don&apos;t forward it — anyone with the link can
+              This link is personal to you. Please don&apos;t forward it - anyone with the link can
               update this ticket.
             </p>
           </div>

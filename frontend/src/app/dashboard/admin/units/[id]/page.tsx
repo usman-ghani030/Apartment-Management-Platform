@@ -2,8 +2,14 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Home, Building2, User, Mail, Phone, Ticket, ExternalLink, ArrowRightLeft, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import {
+  ArrowLeft, Home, Building2, User, Mail, Phone, Ticket, ExternalLink,
+  ArrowRightLeft, CheckCircle, XCircle, AlertTriangle, Layers, BedDouble, Users, CalendarDays,
+} from 'lucide-react';
 import { auth, ApiError, apiGet, apiPost } from '@/lib/api';
+import { Modal } from '@/components/ui/Modal';
+import { Field } from '@/components/ui/Field';
+import { StatusBadge } from '@/components/ui/StatusBadge';
 
 const UNIT_TYPES: Record<string, string> = {
   OWNER_OCCUPIED: 'Owner Occupied',
@@ -20,12 +26,18 @@ const BEDROOM_TYPES: Record<string, string> = {
   FOUR_PLUS_BED: '4+ Bedrooms',
 };
 
-const TICKET_STATUS_COLORS: Record<string, string> = {
-  OPEN: 'bg-yellow-100 text-yellow-800',
-  ASSIGNED: 'bg-blue-100 text-blue-800',
-  IN_PROGRESS: 'bg-purple-100 text-purple-800',
-  RESOLVED: 'bg-green-100 text-green-800',
-  CLOSED: 'bg-gray-100 text-gray-800',
+/** Role is the one coloured value on the occupant rows. */
+const roleText = (role: string) =>
+  role === 'COMMITTEE_ADMIN' ? 'text-purple-700' : role === 'SECURITY_GUARD' ? 'text-amber-700' : 'text-emerald-700';
+
+const roleLabel = (role: string) =>
+  role === 'COMMITTEE_ADMIN' ? 'Admin' : role === 'SECURITY_GUARD' ? 'Guard' : 'Resident';
+
+const ticketVariant = (status: string) => {
+  if (status === 'OPEN' || status === 'ASSIGNED') return 'warning' as const;
+  if (status === 'IN_PROGRESS') return 'info' as const;
+  if (status === 'RESOLVED' || status === 'CLOSED') return 'success' as const;
+  return 'neutral' as const;
 };
 
 interface UnitDetail {
@@ -61,6 +73,87 @@ interface UnitTicket {
   createdAt: string;
 }
 
+// ── Local presentation pieces ─────────────────────────────────────────
+
+/** Stat tile: accent top rule, eyebrow label, icon chip. */
+function Tile({
+  icon: Icon,
+  label,
+  value,
+  hint,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: React.ReactNode;
+  hint?: string;
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-gray-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <span className="absolute inset-x-0 top-0 h-1 bg-accent-500" aria-hidden="true" />
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">{label}</p>
+          <p className="mt-2.5 truncate text-title font-display text-gray-900">{value}</p>
+          {hint && <p className="mt-1 truncate text-caption-xs text-gray-500">{hint}</p>}
+        </div>
+        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-accent-50 text-accent-600">
+          <Icon className="h-4.5 w-4.5" />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Card shell: accent top rule, icon-chip header, padded body. */
+function Panel({
+  icon: Icon,
+  title,
+  caption,
+  right,
+  className = '',
+  children,
+}: {
+  icon: React.ElementType;
+  title: string;
+  caption: string;
+  right?: React.ReactNode;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      className={`relative flex flex-col overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06)] ${className}`}
+    >
+      <span className="absolute inset-x-0 top-0 h-0.5 bg-accent-500" aria-hidden="true" />
+      <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4">
+        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-accent-500 to-accent-600 ring-1 ring-accent-200">
+          <Icon className="h-4.5 w-4.5 text-white" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-body-sm font-semibold leading-tight text-gray-900">{title}</p>
+          <p className="text-caption-xs text-gray-500">{caption}</p>
+        </div>
+        {right && <div className="ml-auto flex flex-shrink-0 items-center gap-2">{right}</div>}
+      </div>
+      <div className="flex flex-1 flex-col p-5">{children}</div>
+    </section>
+  );
+}
+
+function initials(name: string) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+}
+
+const shortDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+const formatPaisa = (paisa: number) => `Rs ${(paisa / 100).toLocaleString('en-PK')}`;
+
 export default function UnitDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -92,8 +185,14 @@ export default function UnitDetailPage() {
     }
   };
 
+  const closeTransfer = () => {
+    setShowTransfer(false);
+    setTransferCheck(null);
+  };
+
   const handleOpenTransfer = async () => {
-    setError(''); setSuccess('');
+    setError('');
+    setSuccess('');
     setTransferLoading(true);
     setShowTransfer(true);
     try {
@@ -112,9 +211,8 @@ export default function UnitDetailPage() {
     setError('');
     try {
       const result = await apiPost<any>(`/api/v1/units/${unitId}/complete-transfer`, {});
-      setSuccess(`Transfer completed — ${result.deactivatedMembers} member(s) deactivated, primary contact cleared`);
-      setShowTransfer(false);
-      setTransferCheck(null);
+      setSuccess(`Transfer completed - ${result.deactivatedMembers} member(s) deactivated, primary contact cleared`);
+      closeTransfer();
       fetchUnit();
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
@@ -125,297 +223,413 @@ export default function UnitDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white text-gray-900 flex items-center justify-center">
-        <div className="animate-spin h-8 w-8 border-2 border-accent-500 border-t-transparent rounded-full" />
+      <div className="flex min-h-screen items-center justify-center bg-[#f6f8fc] text-gray-900">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-500 border-t-transparent" />
+          <p className="text-body-sm text-gray-500">Loading unit...</p>
+        </div>
       </div>
     );
   }
 
   if (error && !unit) {
     return (
-      <div className="min-h-screen bg-white text-gray-900">
-        <div className="max-w-4xl mx-auto px-6 py-8">
-          <div className="flex items-center gap-4 mb-8">
-            <button onClick={() => router.push('/dashboard/admin/units')} className="p-2 hover:bg-gray-50 rounded-lg transition-colors">
-              <ArrowLeft className="w-5 h-5 text-gray-700" />
-            </button>
-            <h1 className="text-2xl font-bold text-gray-900">Error</h1>
+      <div className="min-h-screen bg-[#f6f8fc] text-gray-900">
+        <div className="mx-auto max-w-5xl px-6 py-8">
+          <button
+            onClick={() => router.push('/dashboard/admin/units')}
+            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-body-sm font-medium text-gray-600 transition-all hover:bg-gray-50"
+          >
+            <ArrowLeft className="h-4 w-4" /> Back to units
+          </button>
+          <div className="mt-6 flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-body-sm text-red-700">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            {error || 'Unit not found'}
           </div>
-          <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-3">{error || 'Unit not found'}</div>
         </div>
       </div>
     );
   }
 
-  const hasOccupants = unit!.hasLinkedResident || !!unit!.primaryContactName;
+  const u = unit!;
+  const hasOccupants = u.hasLinkedResident || !!u.primaryContactName;
+  const isVacant = u.type === 'VACANT';
+  const occupancy = UNIT_TYPES[u.type] || u.type;
+  const bedrooms = u.bedroomType ? BEDROOM_TYPES[u.bedroomType] || u.bedroomType : 'Not specified';
+  const statusLabel = isVacant ? 'Vacant' : u.hasLinkedResident ? 'Linked resident' : 'Occupied';
 
   return (
-    <div className="min-h-screen bg-white text-gray-900">
-      <div className="max-w-4xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <button onClick={() => router.push('/dashboard/admin/units')} className="p-2 hover:bg-gray-50 rounded-lg transition-colors">
-            <ArrowLeft className="w-5 h-5 text-gray-700" />
+    <div className="min-h-screen bg-[#f6f8fc] text-gray-900">
+      <div className="mx-auto max-w-5xl px-6 py-8">
+        {/* ── Header ─────────────────────────────────────────────── */}
+        <div className="mb-6 flex flex-wrap items-start gap-4">
+          <button
+            onClick={() => router.push('/dashboard/admin/units')}
+            aria-label="Back to units"
+            className="rounded-xl border border-gray-200 bg-white p-2.5 text-gray-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-accent-200 hover:text-accent-700"
+          >
+            <ArrowLeft className="h-4.5 w-4.5" />
           </button>
-          <div className="flex items-center gap-3 flex-1">
-            <div className="w-10 h-10 bg-accent-50 rounded-xl flex items-center justify-center">
-              <Home className="w-5 h-5 text-accent-500" />
+
+          <div className="flex min-w-0 flex-1 items-center gap-4">
+            <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-accent-500 to-accent-600 ring-1 ring-accent-200 shadow-[0_10px_24px_-12px_rgba(37,99,235,1)]">
+              <Home className="h-6 w-6 text-white" />
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Unit {unit!.unitNumber}</h1>
-              <p className="text-gray-700 text-sm mt-1">
-                <button onClick={() => router.push(`/dashboard/admin/buildings/${unit!.buildingId}`)} className="hover:text-accent-500 transition-colors">
-                  {unit!.buildingName}
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-400">Unit</span>
+                <StatusBadge variant={isVacant ? 'warning' : u.hasLinkedResident ? 'success' : 'info'}>
+                  {statusLabel}
+                </StatusBadge>
+              </div>
+              <h1 className="mt-1 truncate text-display-sm font-display text-gray-900">Unit {u.unitNumber}</h1>
+              <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-body-sm text-gray-500">
+                <button
+                  onClick={() => router.push(`/dashboard/admin/buildings/${u.buildingId}`)}
+                  className="inline-flex items-center gap-1 font-medium text-accent-700 transition-colors hover:text-accent-800 hover:underline"
+                >
+                  <Building2 className="h-3.5 w-3.5" />
+                  {u.buildingName}
                 </button>
-                {' · Floor '}{unit!.floor}
+                <span aria-hidden="true">&middot;</span>
+                Floor {u.floor}
+                <span aria-hidden="true">&middot;</span>
+                {bedrooms}
               </p>
             </div>
           </div>
+
           {hasOccupants && (
             <button
               onClick={handleOpenTransfer}
-              className="flex items-center gap-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 hover:border-red-300 rounded-lg px-4 py-2 text-sm font-medium transition-all"
+              className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2.5 text-body-sm font-medium text-red-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-red-300 hover:bg-red-50"
             >
-              <ArrowRightLeft className="w-4 h-4" /> Transfer / Move-Out
+              <ArrowRightLeft className="h-4 w-4" /> Transfer / Move-out
             </button>
           )}
         </div>
 
-        {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
-        {success && <div className="bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-lg px-4 py-3 mb-6">{success}</div>}
-
-        {/* Transfer Clearance Modal */}
-        {showTransfer && (
-          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => { setShowTransfer(false); setTransferCheck(null); }}>
-            <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center">
-                  <ArrowRightLeft className="w-5 h-5 text-red-600" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold">Transfer Clearance</h3>
-                  <p className="text-sm text-gray-700">Unit {unit!.unitNumber} · {unit!.buildingName}</p>
-                </div>
-              </div>
-
-              {transferLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="animate-spin h-6 w-6 border-2 border-accent-500 border-t-transparent rounded-full" />
-                </div>
-              ) : transferCheck ? (
-                <div className="space-y-4">
-                  {/* Outstanding Invoices */}
-                  {transferCheck.unpaidCount > 0 ? (
-                    <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                      <div className="flex items-center gap-2 mb-3">
-                        <XCircle className="w-5 h-5 text-red-600" />
-                        <h4 className="font-semibold text-red-700">{transferCheck.unpaidCount} Unpaid Invoice{transferCheck.unpaidCount > 1 ? 's' : ''}</h4>
-                      </div>
-                      <p className="text-sm text-red-600 mb-3">
-                        All dues must be settled before transfer. Total outstanding: <strong>Rs {(transferCheck.unpaidTotal / 100).toLocaleString()}</strong>
-                      </p>
-                      <div className="space-y-2 max-h-40 overflow-y-auto">
-                        {transferCheck.unpaidInvoices.map((inv: any) => (
-                          <div key={inv.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-red-100">
-                            <div>
-                              <p className="text-sm font-medium">{inv.title}</p>
-                              <p className="text-xs text-gray-500">{inv.invoiceNumber} · Due {new Date(inv.dueDate).toLocaleDateString()}</p>
-                            </div>
-                            <span className="text-sm font-semibold text-red-600">Rs {(inv.amount / 100).toLocaleString()}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="mt-3 pt-3 border-t border-red-200">
-                        <button
-                          onClick={() => router.push('/dashboard/admin/invoices')}
-                          className="w-full text-sm text-red-600 font-medium hover:text-red-700"
-                        >
-                          Go to Invoices →
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <CheckCircle className="w-5 h-5 text-green-600" />
-                        <h4 className="font-semibold text-green-700">All Dues Settled</h4>
-                      </div>
-                      <p className="text-sm text-green-600">No outstanding invoices. Transfer can proceed.</p>
-                    </div>
-                  )}
-
-                  {/* Members to deactivate */}
-                  {transferCheck.activeMembers.length > 0 && (
-                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                      <p className="text-sm font-medium text-gray-700 mb-2">
-                        {transferCheck.activeMembers.length} active member{transferCheck.activeMembers.length > 1 ? 's' : ''} will be deactivated:
-                      </p>
-                      <div className="space-y-1">
-                        {transferCheck.activeMembers.map((m: any) => (
-                          <div key={m.membershipId} className="flex items-center gap-2 text-sm text-gray-700">
-                            <User className="w-3 h-3" /> {m.name} <span className="text-xs text-gray-500">({m.role})</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Primary contact */}
-                  {transferCheck.primaryContactName && (
-                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                      <p className="text-sm font-medium text-gray-700 mb-1">Primary contact will be cleared:</p>
-                      <p className="text-sm text-gray-700">{transferCheck.primaryContactName} {transferCheck.primaryContactEmail ? `(${transferCheck.primaryContactEmail})` : ''}</p>
-                    </div>
-                  )}
-
-                  {/* Actions */}
-                  <div className="flex gap-3 pt-2">
-                    <button
-                      onClick={() => { setShowTransfer(false); setTransferCheck(null); }}
-                      className="flex-1 px-4 py-2.5 text-sm text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleCompleteTransfer}
-                      disabled={!transferCheck.canTransfer || completingTransfer}
-                      className={`flex-1 px-4 py-2.5 text-sm font-medium rounded-xl transition-all ${
-                        transferCheck.canTransfer
-                          ? 'bg-red-600 hover:bg-red-700 text-white'
-                          : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      }`}
-                    >
-                      {completingTransfer ? 'Completing...' : transferCheck.canTransfer ? 'Complete Transfer' : 'Settle Dues First'}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
+        {/* ── Banners ────────────────────────────────────────────── */}
+        {error && (
+          <div className="mb-5 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-body-sm text-red-700">
+            <XCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <span className="min-w-0">{error}</span>
+          </div>
+        )}
+        {success && (
+          <div className="mb-5 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-body-sm text-emerald-700">
+            <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <span className="min-w-0">{success}</span>
           </div>
         )}
 
-        {/* Unit Info Card */}
-        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Unit Details</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Type</p>
-              <p className="text-sm font-medium mt-1">{UNIT_TYPES[unit!.type] || unit!.type}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Bedroom Type</p>
-              <p className="text-sm font-medium mt-1">{unit!.bedroomType ? (BEDROOM_TYPES[unit!.bedroomType] || unit!.bedroomType) : 'Not specified'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Floor</p>
-              <p className="text-sm font-medium mt-1">{unit!.floor}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Building</p>
-              <p className="text-sm font-medium mt-1">{unit!.buildingName}</p>
-            </div>
-          </div>
+        {/* ── At a glance ────────────────────────────────────────── */}
+        <div className="mb-7 grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <Tile icon={Layers} label="Occupancy" value={occupancy} hint={isVacant ? 'No one living here' : 'Currently in use'} />
+          <Tile icon={BedDouble} label="Bedrooms" value={u.bedroomType ? bedrooms.replace(' Bedrooms', '') : '-'} hint={u.bedroomType ? 'Bedroom type' : 'Not specified'} />
+          <Tile icon={Building2} label="Floor" value={u.floor} hint={u.buildingName} />
+          <Tile
+            icon={Users}
+            label="People"
+            value={u.members.length > 0 ? u.members.length : u.primaryContactName ? 1 : 0}
+            hint={u.hasLinkedResident ? 'Linked accounts' : u.primaryContactName ? 'Unlinked contact' : 'Nobody on file'}
+          />
         </div>
 
-        {/* Occupant Section */}
-        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Occupant Information</h2>
-          
-          {unit!.hasLinkedResident ? (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                  ✓ Linked to Account
-                </span>
+        {/* ── Occupant + unit details ────────────────────────────── */}
+        <div className="grid gap-6 lg:grid-cols-5">
+          <Panel
+            icon={User}
+            title="Occupant"
+            caption={u.hasLinkedResident ? 'Linked to an app account' : 'Contact on file'}
+            className="lg:col-span-3"
+            right={
+              u.hasLinkedResident ? (
+                <StatusBadge variant="success">Linked</StatusBadge>
+              ) : u.primaryContactName ? (
+                <StatusBadge variant="warning">Not linked</StatusBadge>
+              ) : undefined
+            }
+          >
+            {u.hasLinkedResident && u.members.length > 0 ? (
+              <div className="space-y-3">
+                {u.members.map((member) => (
+                  <button
+                    key={member.id}
+                    onClick={() => router.push(`/dashboard/admin/directory/${member.userId}`)}
+                    className="group flex w-full items-center gap-4 rounded-2xl border border-gray-200/80 bg-gray-50/60 px-4 py-3.5 text-left transition-all hover:border-accent-200 hover:bg-accent-50/40"
+                  >
+                    <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-accent-500 to-accent-600 text-body-sm font-semibold text-white ring-1 ring-accent-200">
+                      {initials(member.name) || <User className="h-4 w-4" />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-body-sm font-semibold text-gray-900 transition-colors group-hover:text-accent-700">
+                        {member.name}
+                      </span>
+                      <span className="mt-0.5 flex items-center gap-1 truncate text-caption-xs text-gray-500">
+                        <Mail className="h-3 w-3 flex-shrink-0 text-gray-400" />
+                        {member.email}
+                      </span>
+                    </span>
+                    <span className={`flex-shrink-0 text-[11px] font-semibold ${roleText(member.role)}`}>
+                      {roleLabel(member.role)}
+                    </span>
+                  </button>
+                ))}
               </div>
-              {unit!.members.map((member) => (
-                <div key={member.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
-                  <div className="w-10 h-10 bg-accent-50 rounded-full flex items-center justify-center">
-                    <User className="w-5 h-5 text-accent-500" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium">{member.name}</p>
-                    <div className="flex items-center gap-4 mt-1">
-                      <span className="flex items-center gap-1 text-xs text-gray-500">
-                        <Mail className="w-3 h-3" /> {member.email}
-                      </span>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-accent-100 text-accent-700">
-                        {member.role}
-                      </span>
+            ) : u.primaryContactName ? (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-gray-200/80 bg-gray-50/60 p-4">
+                  <div className="flex items-center gap-3.5">
+                    <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-gray-100 ring-1 ring-gray-200">
+                      <User className="h-4.5 w-4.5 text-gray-400" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-body-sm font-semibold text-gray-900">{u.primaryContactName}</p>
+                      <p className="text-caption-xs text-gray-500">Primary contact, not yet on the app</p>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : unit!.primaryContactName ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                  ⚠ Not yet linked to an account
-                </span>
-              </div>
-              <div className="p-4 bg-gray-50 rounded-xl">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
-                    <User className="w-5 h-5 text-gray-400" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium">{unit!.primaryContactName}</p>
-                    <div className="flex flex-col gap-1 mt-2">
-                      {unit!.primaryContactEmail && (
-                        <span className="flex items-center gap-1 text-xs text-gray-500">
-                          <Mail className="w-3 h-3" /> {unit!.primaryContactEmail}
-                        </span>
-                      )}
-                      {unit!.primaryContactPhone && (
-                        <span className="flex items-center gap-1 text-xs text-gray-500">
-                          <Phone className="w-3 h-3" /> {unit!.primaryContactPhone}
-                        </span>
-                      )}
-                    </div>
+                  <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 border-t border-gray-200/70 pt-4 sm:grid-cols-2">
+                    <Field label="Email">{u.primaryContactEmail || 'Not provided'}</Field>
+                    <Field label="Phone">{u.primaryContactPhone || 'Not provided'}</Field>
                   </div>
                 </div>
+
+                <p className="text-caption-xs leading-relaxed text-gray-500">
+                  An unlinked contact cannot see notices, pay dues, or raise tickets. Inviting them creates their
+                  membership for this unit.
+                </p>
+
+                {u.primaryContactEmail && (
+                  <button
+                    onClick={() =>
+                      router.push(
+                        `/dashboard/admin/memberships?inviteEmail=${encodeURIComponent(u.primaryContactEmail!)}&inviteName=${encodeURIComponent(u.primaryContactName || '')}&unitId=${u.id}`
+                      )
+                    }
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-accent-600 px-4 py-2.5 text-body-sm font-medium text-white shadow-[0_8px_20px_-10px_rgba(37,99,235,0.9)] transition-all hover:-translate-y-0.5 hover:bg-accent-700"
+                  >
+                    <ExternalLink className="h-4 w-4" /> Invite as resident
+                  </button>
+                )}
               </div>
-              {unit!.primaryContactEmail && (
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center px-6 py-10 text-center">
+                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-50">
+                  <User className="h-5 w-5 text-accent-500" />
+                </div>
+                <p className="text-body-sm font-medium text-gray-600">Nobody assigned to this unit</p>
+                <p className="mt-0.5 max-w-[18rem] text-caption-xs leading-relaxed text-gray-400">
+                  Add a resident from the Residents page and they will appear here.
+                </p>
                 <button
-                  onClick={() => router.push(`/dashboard/admin/memberships?inviteEmail=${encodeURIComponent(unit!.primaryContactEmail!)}&inviteName=${encodeURIComponent(unit!.primaryContactName || '')}&unitId=${unit!.id}`)}
-                  className="w-full flex items-center justify-center gap-2 bg-accent-600 hover:bg-accent-700 text-white rounded-lg py-2.5 text-sm font-medium transition-all"
+                  onClick={() => router.push('/dashboard/admin/memberships')}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-body-sm font-medium text-gray-600 transition-all hover:border-accent-200 hover:bg-accent-50 hover:text-accent-700"
                 >
-                  <ExternalLink className="w-4 h-4" />
-                  Invite as Resident
+                  <Users className="h-3.5 w-3.5" /> Go to residents
                 </button>
-              )}
+              </div>
+            )}
+          </Panel>
+
+          <Panel icon={Layers} title="Unit details" caption="Records for this flat" className="lg:col-span-2">
+            <div className="grid grid-cols-1 gap-x-6 gap-y-3.5 sm:grid-cols-2">
+              <Field label="Unit">{u.unitNumber}</Field>
+              <Field label="Occupancy">{occupancy}</Field>
+              <Field label="Floor">{u.floor}</Field>
+              <Field label="Bedrooms">{bedrooms}</Field>
+              <Field label="Building">{u.buildingName}</Field>
+              <Field label="Added">{shortDate(u.createdAt)}</Field>
+            </div>
+            <p className="mt-auto pt-5 text-caption-xs text-gray-400">Last updated {shortDate(u.updatedAt)}</p>
+          </Panel>
+        </div>
+
+        {/* ── Recent tickets ─────────────────────────────────────── */}
+        <Panel
+          icon={Ticket}
+          title="Recent tickets"
+          caption="Maintenance raised from this unit"
+          className="mt-6"
+          right={
+            u.recentTickets.length > 0 ? (
+              <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-caption-xs font-semibold text-gray-600">
+                {u.recentTickets.length}
+              </span>
+            ) : undefined
+          }
+        >
+          {u.recentTickets.length > 0 ? (
+            <div className="-mx-5 -my-5 divide-y divide-gray-100">
+              {u.recentTickets.map((ticket) => (
+                <button
+                  key={ticket.id}
+                  onClick={() => router.push(`/dashboard/admin/tickets?id=${ticket.id}`)}
+                  className="group flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-accent-50/40"
+                >
+                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-accent-50 ring-1 ring-accent-100">
+                    <Ticket className="h-4 w-4 text-accent-600" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-body-sm font-medium text-gray-900 transition-colors group-hover:text-accent-700">
+                      {ticket.title}
+                    </span>
+                    <span className="mt-0.5 flex items-center gap-1 text-caption-xs text-gray-500">
+                      <CalendarDays className="h-3 w-3 text-gray-400" />
+                      {shortDate(ticket.createdAt)}
+                    </span>
+                  </span>
+                  <StatusBadge variant={ticketVariant(ticket.status)} dot={false}>
+                    {ticket.status.replace(/_/g, ' ')}
+                  </StatusBadge>
+                </button>
+              ))}
             </div>
           ) : (
-            <div className="p-4 bg-gray-50 rounded-xl text-center">
-              <p className="text-gray-500 text-sm">No contact information on file</p>
+            <div className="flex flex-1 flex-col items-center justify-center px-6 py-10 text-center">
+              <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-50">
+                <Ticket className="h-5 w-5 text-accent-500" />
+              </div>
+              <p className="text-body-sm font-medium text-gray-600">No tickets from this unit</p>
+              <p className="mt-0.5 max-w-[18rem] text-caption-xs leading-relaxed text-gray-400">
+                Anything a resident reports from Unit {u.unitNumber} shows up here.
+              </p>
             </div>
           )}
-        </div>
+        </Panel>
+      </div>
 
-        {/* Recent Tickets */}
-        {unit!.recentTickets.length > 0 && (
-          <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-            <h2 className="text-lg font-semibold mb-4">Recent Tickets</h2>
-            <div className="space-y-3">
-              {unit!.recentTickets.map((ticket) => (
-                <div key={ticket.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <Ticket className="w-4 h-4 text-gray-400" />
-                    <div>
-                      <p className="font-medium text-sm">{ticket.title}</p>
-                      <p className="text-xs text-gray-500">{new Date(ticket.createdAt).toLocaleDateString()}</p>
-                    </div>
-                  </div>
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${TICKET_STATUS_COLORS[ticket.status] || 'bg-gray-100 text-gray-800'}`}>
-                    {ticket.status.replace('_', ' ')}
+      {/* ── Transfer clearance dialog ──────────────────────────── */}
+      <Modal
+        open={showTransfer}
+        onClose={closeTransfer}
+        icon={ArrowRightLeft}
+        title="Transfer clearance"
+        subtitle={`Unit ${u.unitNumber} · ${u.buildingName}`}
+        size="lg"
+        footer={
+          transferCheck ? (
+            <>
+              <button
+                onClick={closeTransfer}
+                className="flex-1 rounded-xl border border-gray-200 bg-white py-2.5 text-body-sm font-medium text-gray-700 transition-all hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCompleteTransfer}
+                disabled={!transferCheck.canTransfer || completingTransfer}
+                className={`flex-[1.3] rounded-xl py-2.5 text-body-sm font-medium transition-all ${
+                  transferCheck.canTransfer
+                    ? 'bg-red-600 text-white hover:bg-red-700'
+                    : 'cursor-not-allowed bg-gray-100 text-gray-400'
+                }`}
+              >
+                {completingTransfer
+                  ? 'Completing...'
+                  : transferCheck.canTransfer
+                    ? 'Complete transfer'
+                    : 'Settle dues first'}
+              </button>
+            </>
+          ) : undefined
+        }
+      >
+        {transferLoading ? (
+          <div className="flex items-center justify-center py-10">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-accent-500 border-t-transparent" />
+          </div>
+        ) : transferCheck ? (
+          <div className="space-y-4">
+            <p className="text-body-sm leading-relaxed text-gray-500">
+              Moving out clears this unit: active members are deactivated and the primary contact is removed.
+              Anything outstanding has to be settled first.
+            </p>
+
+            {/* Dues */}
+            {transferCheck.unpaidCount > 0 ? (
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                <div className="flex items-center gap-2">
+                  <XCircle className="h-5 w-5 text-red-600" />
+                  <h4 className="text-body-sm font-semibold text-red-700">
+                    {transferCheck.unpaidCount} unpaid invoice{transferCheck.unpaidCount > 1 ? 's' : ''}
+                  </h4>
+                  <span className="ml-auto text-body-sm font-semibold text-red-700">
+                    {formatPaisa(transferCheck.unpaidTotal)}
                   </span>
                 </div>
-              ))}
-            </div>
+                <p className="mt-2 text-caption text-red-600">
+                  All dues must be settled before a transfer can be completed.
+                </p>
+                <div className="mt-3 max-h-44 space-y-2 overflow-y-auto">
+                  {transferCheck.unpaidInvoices.map((inv: any) => (
+                    <div
+                      key={inv.id}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-red-100 bg-white px-3.5 py-2.5"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-body-sm font-medium text-gray-900">{inv.title}</p>
+                        <p className="text-caption-xs text-gray-500">
+                          {inv.invoiceNumber} &middot; Due {shortDate(inv.dueDate)}
+                        </p>
+                      </div>
+                      <span className="flex-shrink-0 text-body-sm font-semibold text-red-600">
+                        {formatPaisa(inv.amount)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => router.push('/dashboard/admin/invoices')}
+                  className="mt-3 inline-flex items-center gap-1.5 text-caption font-semibold text-red-600 transition-colors hover:text-red-700"
+                >
+                  Go to invoices <ArrowRightLeft className="h-3 w-3 rotate-45" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <CheckCircle className="h-5 w-5 flex-shrink-0 text-emerald-600" />
+                <div>
+                  <p className="text-body-sm font-semibold text-emerald-700">All dues settled</p>
+                  <p className="text-caption-xs text-emerald-600">No outstanding invoices. The transfer can proceed.</p>
+                </div>
+              </div>
+            )}
+
+            {/* Members to deactivate */}
+            {transferCheck.activeMembers.length > 0 && (
+              <div className="rounded-2xl border border-gray-200/80 bg-gray-50/60 p-4">
+                <p className="text-body-sm font-medium text-gray-700">
+                  {transferCheck.activeMembers.length} active member
+                  {transferCheck.activeMembers.length > 1 ? 's' : ''} will be deactivated
+                </p>
+                <div className="mt-3 space-y-2">
+                  {transferCheck.activeMembers.map((m: any) => (
+                    <div key={m.membershipId} className="flex items-center gap-3">
+                      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-white text-caption-xs font-semibold text-gray-500 ring-1 ring-gray-200">
+                        {initials(m.name)}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-body-sm text-gray-700">{m.name}</span>
+                      <span className="flex-shrink-0 text-caption-xs text-gray-500">{roleLabel(m.role)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Primary contact */}
+            {transferCheck.primaryContactName && (
+              <div className="rounded-2xl border border-gray-200/80 bg-gray-50/60 p-4">
+                <p className="text-body-sm font-medium text-gray-700">Primary contact will be cleared</p>
+                <p className="mt-1 text-body-sm text-gray-600">
+                  {transferCheck.primaryContactName}
+                  {transferCheck.primaryContactEmail ? ` (${transferCheck.primaryContactEmail})` : ''}
+                </p>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

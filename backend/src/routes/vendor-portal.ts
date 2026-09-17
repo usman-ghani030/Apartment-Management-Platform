@@ -24,7 +24,7 @@ import { vendorTokenIpLimiter, vendorTokenLookupLimiter } from '../lib/rate-limi
 // enforced here on every single request:
 //
 //   * The token lookup is by SHA-256 hash stored on the Ticket row, so a valid
-//     token can only ever resolve to the one ticket it was issued for — it
+//     token can only ever resolve to the one ticket it was issued for - it
 //     cannot reach another ticket, another society, or any other feature.
 //   * The response is a deliberately limited view: no resident name/email/phone,
 //     no financial data, no comments, no other tickets, nothing admin-only.
@@ -51,7 +51,7 @@ const VENDOR_TICKET_INCLUDES = {
   unit: { select: { unitNumber: true } },
 } as const;
 
-/** Only the fields a vendor needs to do the job — nothing else is exposed. */
+/** Only the fields a vendor needs to do the job - nothing else is exposed. */
 function formatVendorView(t: VendorTicketRecord): VendorTicketView {
   let photos: string[] = [];
   if (t.photosUrl) {
@@ -75,7 +75,7 @@ function formatVendorView(t: VendorTicketRecord): VendorTicketView {
     category: t.category,
     status,
     unitNumber: t.unit?.unitNumber ?? null,
-    // Relative paths — the client prefixes them with the API base URL.
+    // Relative paths - the client prefixes them with the API base URL.
     photos,
     createdAt: t.createdAt.toISOString(),
     updatedAt: t.updatedAt.toISOString(),

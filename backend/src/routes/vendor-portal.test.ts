@@ -14,7 +14,7 @@ vi.mock('../lib/prisma', () => ({
   },
 }));
 
-// The email provider is mocked — we assert on what would be sent, not that Gmail
+// The email provider is mocked - we assert on what would be sent, not that Gmail
 // accepted it (that is verified live, per the manual test guide).
 vi.mock('../lib/email', () => ({ sendEmail: vi.fn() }));
 
@@ -113,7 +113,7 @@ afterAll(() => {
 // The vendor's limited, token-scoped view
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('GET /api/v1/vendor/ticket/:token — public token-scoped view', () => {
+describe('GET /api/v1/vendor/ticket/:token - public token-scoped view', () => {
   it('grants access to exactly the ticket the token was issued for, and nothing more', async () => {
     (prisma.ticket.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(vendorTicket());
 
@@ -122,7 +122,7 @@ describe('GET /api/v1/vendor/ticket/:token — public token-scoped view', () => 
     expect(res.status).toBe(200);
     expect(res.body.error).toBeNull();
 
-    // Lookup is by the token's hash only — the client cannot name a ticket.
+    // Lookup is by the token's hash only - the client cannot name a ticket.
     expect(prisma.ticket.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ vendorAccessTokenHash: VENDOR_TOKEN_HASH }),
@@ -222,7 +222,7 @@ describe('GET /api/v1/vendor/ticket/:token — public token-scoped view', () => 
 // The vendor's only write: status transitions
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('PATCH /api/v1/vendor/ticket/:token/status — vendor status updates', () => {
+describe('PATCH /api/v1/vendor/ticket/:token/status - vendor status updates', () => {
   it('moves ASSIGNED → IN_PROGRESS, attributing the change to the vendor', async () => {
     (prisma.ticket.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(vendorTicket());
     (prisma.ticket.update as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -311,7 +311,7 @@ describe('PATCH /api/v1/vendor/ticket/:token/status — vendor status updates', 
 // Admin-side triggers: issue, rotate, revoke
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('PATCH /api/v1/tickets/:id — vendor link lifecycle', () => {
+describe('PATCH /api/v1/tickets/:id - vendor link lifecycle', () => {
   it('issues a hashed token and emails the magic link on assignment', async () => {
     mockAuth();
     (prisma.ticket.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -365,7 +365,7 @@ describe('PATCH /api/v1/tickets/:id — vendor link lifecycle', () => {
     expect(res.status).toBe(200);
 
     const updateData = (prisma.ticket.update as ReturnType<typeof vi.fn>).mock.calls[0][0].data;
-    // A brand-new hash replaces the old one — the old link no longer resolves.
+    // A brand-new hash replaces the old one - the old link no longer resolves.
     expect(updateData.vendorAccessTokenHash).not.toBe('old-hash');
     expect(updateData.vendorAccessTokenHash).toMatch(/^[a-f0-9]{64}$/);
 
@@ -416,7 +416,7 @@ describe('PATCH /api/v1/tickets/:id — vendor link lifecycle', () => {
     const updateData = (prisma.ticket.update as ReturnType<typeof vi.fn>).mock.calls[0][0].data;
     expect(updateData.status).toBe('CLOSED');
     expect(updateData.closedAt).toBeInstanceOf(Date);
-    // Closing issues no new link and does not re-point the token — the CLOSED
+    // Closing issues no new link and does not re-point the token - the CLOSED
     // status check is the authoritative gate, so the vendor is told the ticket
     // was closed rather than getting a bare "invalid link" error.
     expect(updateData.vendorAccessTokenHash).toBeUndefined();

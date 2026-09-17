@@ -7,10 +7,10 @@ import {
 } from './platform-pricing';
 
 /**
- * Progressive (income-tax style) pricing — ADR 006.
+ * Progressive (income-tax style) pricing - ADR 006.
  * The worked examples are the spec's acceptance criteria.
  */
-describe('calculatePlatformFee — worked examples from ADR 006', () => {
+describe('calculatePlatformFee - worked examples from ADR 006', () => {
   it('50 units → Rs 700', () => {
     expect(calculatePlatformFee(50).totalRupees).toBe(700);
   });
@@ -42,7 +42,7 @@ describe('calculatePlatformFee — worked examples from ADR 006', () => {
     expect(FREE_UNIT_THRESHOLD).toBe(15);
   });
 
-  it('16 units → Rs 20 (first billable unit, smooth transition — no cliff)', () => {
+  it('16 units → Rs 20 (first billable unit, smooth transition - no cliff)', () => {
     expect(calculatePlatformFee(16).totalRupees).toBe(20);
   });
 
@@ -64,7 +64,7 @@ describe('calculatePlatformFee — worked examples from ADR 006', () => {
       }
       previous = total;
     }
-    // Above the cap the formula stays at the ceiling — but 501+ societies are
+    // Above the cap the formula stays at the ceiling - but 501+ societies are
     // never auto-invoiced (custom quote), so no cliff can leak into billing.
     expect(calculatePlatformFee(501).totalRupees).toBe(4900);
     expect(calculatePlatformFee(600).totalRupees).toBe(4900);

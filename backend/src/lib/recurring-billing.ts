@@ -59,9 +59,9 @@ export async function generateRecurringInvoices(
     // Only generate on the configured day (or if manually triggered with societyId)
     const today = now.getDate();
     if (!societyId && today !== billingDay) {
-      // Not the billing day — skip (but log for visibility)
+      // Not the billing day - skip (but log for visibility)
       console.log(
-        `[RecurringBilling] Society ${society.name}: today is day ${today}, billing day is ${billingDay} — skipping`
+        `[RecurringBilling] Society ${society.name}: today is day ${today}, billing day is ${billingDay} - skipping`
       );
       continue;
     }
@@ -113,7 +113,7 @@ export async function generateRecurringInvoices(
             societyId: society.id,
             unitId: unit.id,
             invoiceNumber,
-            title: `Monthly Dues — ${billingPeriod}`,
+            title: `Monthly Dues - ${billingPeriod}`,
             description: `Automated recurring billing for ${unit.unitNumber}`,
             amount: 0, // Admin sets amount per unit/invoice later
             dueDate,

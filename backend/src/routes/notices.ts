@@ -116,7 +116,7 @@ router.get(
         ...(isAdmin ? {} : { publishedAt: { not: null } }),
       };
 
-      // Phase 8: targeted notices — residents only see notices targeted to ALL_UNITS
+      // Phase 8: targeted notices - residents only see notices targeted to ALL_UNITS
       // or to their specific unit. Admins see everything.
       let userUnitId: string | null = null;
       if (!isAdmin && req.user) {
@@ -158,6 +158,20 @@ router.get(
           }
           return false;
         });
+      }
+
+      // For admins, attach how many people have opened each notice so the
+      // dashboard can show a real read count (residents only get their own).
+      if (isAdmin && data.length > 0) {
+        const receipts = await prisma.noticeReadReceipt.findMany({
+          where: { noticeId: { in: data.map((n: NoticeResponse) => n.id) } },
+          select: { noticeId: true },
+        });
+        const countByNotice = new Map<string, number>();
+        for (const r of receipts) {
+          countByNotice.set(r.noticeId, (countByNotice.get(r.noticeId) || 0) + 1);
+        }
+        data.forEach((n: NoticeResponse) => { n.readCount = countByNotice.get(n.id) ?? 0; });
       }
 
       // For residents, track read receipts
@@ -209,7 +223,7 @@ router.get(
         throw new AppError(ErrorCodes.NOT_FOUND, 404, 'Notice not found');
       }
 
-      // Phase 8: targeted notices — residents can only view notices targeted to them
+      // Phase 8: targeted notices - residents can only view notices targeted to them
       if (!isAdmin && req.user) {
         const targetType = (notice as any).targetType ?? 'ALL_UNITS';
         if (targetType === 'SPECIFIC_UNITS') {

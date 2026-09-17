@@ -1,6 +1,6 @@
 # Master Project Intelligence
 
-## OmniHome — Apartment Management Platform
+## OmniHome - Apartment Management Platform
 
 > **Audit date:** August 28, 2026
 > **Repository:** apartment-management (monorepo)
@@ -14,11 +14,11 @@
 
 **OmniHome** is a multi-tenant SaaS platform designed to replace WhatsApp groups, paper notices, and spreadsheets for residential community (apartment/society) management. It targets housing societies, apartment complexes, and gated communities in Pakistan.
 
-**What it is:** A full-stack web application with role-based dashboards for committee administrators, residents, and security guards. It covers building/unit management, maintenance ticketing, dues invoicing with online payments (Safepay), visitor management with QR codes, amenity booking, community polls, document storage, parcel tracking, automated dues reminders, vendor ratings, and analytics — all with a complete audit trail.
+**What it is:** A full-stack web application with role-based dashboards for committee administrators, residents, and security guards. It covers building/unit management, maintenance ticketing, dues invoicing with online payments (Safepay), visitor management with QR codes, amenity booking, community polls, document storage, parcel tracking, automated dues reminders, vendor ratings, and analytics - all with a complete audit trail.
 
 **Who it serves:** Housing society committees (admins), residents, and security guards.
 
-**Main problem:** Managing a residential community involves dozens of manual processes — collecting maintenance dues, tracking visitor access, managing complaints, posting notices — typically done through scattered WhatsApp messages, paper logs, and spreadsheets.
+**Main problem:** Managing a residential community involves dozens of manual processes - collecting maintenance dues, tracking visitor access, managing complaints, posting notices - typically done through scattered WhatsApp messages, paper logs, and spreadsheets.
 
 **Main solution:** One connected platform where every community workflow is centralized, role-scoped, and auditable.
 
@@ -37,7 +37,7 @@
 | Attribute | Value |
 |---|---|
 | **Project name** | OmniHome |
-| **Product category** | Multi-tenant SaaS — Residential Community Management |
+| **Product category** | Multi-tenant SaaS - Residential Community Management |
 | **One-sentence description** | A connected platform that replaces WhatsApp, paper notices, and spreadsheets for apartment society management. |
 | **Primary purpose** | Centralize communication, maintenance, payments, visitor management, and governance for residential communities |
 | **Target environment** | Web (responsive, mobile-friendly), deployed via Vercel (frontend) + Railway (backend) |
@@ -50,15 +50,15 @@
 OmniHome is a comprehensive apartment management platform built as a multi-tenant SaaS application. Each customer ("Society") gets an isolated workspace with complete data separation enforced through `societyId` scoping at the database query level.
 
 The platform covers:
-- **Property management** — buildings, units, resident assignments
-- **Communication** — notices/announcements with read receipts, resident directory
-- **Maintenance** — ticketing system with status lifecycle, photo attachments, vendor assignment, ratings
-- **Financial** — invoicing, online payments via Safepay, payment history, dispute flow, automated dues reminders
-- **Security** — QR-coded visitor passes, gate check-in/check-out, parcel tracking
-- **Amenities** — booking system with conflict prevention and configurable rules
-- **Governance** — community polls with one-vote-per-unit enforcement
-- **Documents** — file storage with folder hierarchy
-- **Operations** — audit trail, analytics dashboard, committee transition export
+- **Property management** - buildings, units, resident assignments
+- **Communication** - notices/announcements with read receipts, resident directory
+- **Maintenance** - ticketing system with status lifecycle, photo attachments, vendor assignment, ratings
+- **Financial** - invoicing, online payments via Safepay, payment history, dispute flow, automated dues reminders
+- **Security** - QR-coded visitor passes, gate check-in/check-out, parcel tracking
+- **Amenities** - booking system with conflict prevention and configurable rules
+- **Governance** - community polls with one-vote-per-unit enforcement
+- **Documents** - file storage with folder hierarchy
+- **Operations** - audit trail, analytics dashboard, committee transition export
 
 ---
 
@@ -83,9 +83,9 @@ The platform covers:
 
 | Role | Purpose | Access Level |
 |---|---|---|
-| **Committee Admin** | Manages the society — buildings, units, residents, notices, tickets, invoices, amenities, polls, documents | Full access to all modules, admin dashboard |
-| **Resident** | Lives in the society — raises tickets, pays dues, books amenities, votes, creates visitor passes | Scoped to own unit(s), resident dashboard |
-| **Security Guard** | Manages gate access — verifies QR passes, logs gate entry/exit, logs parcel arrivals | Visitor verification, gate logs, parcel logging |
+| **Committee Admin** | Manages the society - buildings, units, residents, notices, tickets, invoices, amenities, polls, documents | Full access to all modules, admin dashboard |
+| **Resident** | Lives in the society - raises tickets, pays dues, books amenities, votes, creates visitor passes | Scoped to own unit(s), resident dashboard |
+| **Security Guard** | Manages gate access - verifies QR passes, logs gate entry/exit, logs parcel arrivals | Visitor verification, gate logs, parcel logging |
 | **Super Admin** | Platform-level administrative account (internal use) | Everything a committee admin can do, plus society management |
 | **Vendor** | Referenced by name on tickets (no self-service portal in current implementation) | No direct system access |
 
@@ -93,28 +93,28 @@ The platform covers:
 
 # 6. User Roles & Permissions
 
-**Evidence:** `backend/src/lib/permissions.ts` — complete permission matrix
+**Evidence:** `backend/src/lib/permissions.ts` - complete permission matrix
 
 | Resource | SUPER_ADMIN | COMMITTEE_ADMIN | RESIDENT | SECURITY_GUARD |
 |---|---|---|---|---|
-| society | read, update, manage | read, update | read | — |
-| building | CRUD | CRUD | read | — |
-| unit | CRUD | CRUD | read | — |
-| membership | CRUD, invite | CRUD, invite | read | — |
-| user | read, update | read, update | read, update | — |
-| notice | CRUD | CRUD | read | — |
-| ticket | CRUD | CRUD | create, read | — |
-| invoice | CRUD | CRUD | read | — |
-| amenity | CRUD | CRUD | read | — |
-| booking | CRUD | CRUD | create, read | — |
+| society | read, update, manage | read, update | read | - |
+| building | CRUD | CRUD | read | - |
+| unit | CRUD | CRUD | read | - |
+| membership | CRUD, invite | CRUD, invite | read | - |
+| user | read, update | read, update | read, update | - |
+| notice | CRUD | CRUD | read | - |
+| ticket | CRUD | CRUD | create, read | - |
+| invoice | CRUD | CRUD | read | - |
+| amenity | CRUD | CRUD | read | - |
+| booking | CRUD | CRUD | create, read | - |
 | visitor | CRUD | CRUD | create, read, update | read |
-| gate_log | create, read | create, read | — | create, read |
-| poll | CRUD | CRUD | read | — |
-| document | CRUD | CRUD | read | — |
+| gate_log | create, read | create, read | - | create, read |
+| poll | CRUD | CRUD | read | - |
+| document | CRUD | CRUD | read | - |
 | parcel | CRUD | CRUD | read, update | create, read |
-| audit_log | read | read | — | — |
-| vendor | read | read | — | — |
-| analytics | read | read | — | — |
+| audit_log | read | read | - | - |
+| vendor | read | read | - | - |
+| analytics | read | read | - | - |
 
 ---
 
@@ -168,12 +168,12 @@ The platform covers:
 | 44 | Mobile Bottom Navigation | ✅ Implemented | Resident | Fixed bottom nav on mobile | `frontend/src/components/dashboard/resident-shell.tsx` |
 | 45 | Guard Interface (Tablet-Friendly) | ✅ Implemented | Guard | QR scan, parcel logging, mode switching | `frontend/src/app/dashboard/guard/page.tsx` |
 | 46 | Landing Page | ✅ Implemented | Public | Marketing page with features, pricing, FAQ, testimonials | `frontend/src/app/page.tsx` |
-| 47 | Notification Delivery (Email/Push) | ❌ Not Found | — | Notifications are logged to audit trail + console only | `backend/src/lib/notifications.ts` (stub) |
-| 48 | Cloudinary File Storage | 🟠 UI/Mock Only | — | Cloudinary env vars configured but files stored locally on disk | `backend/src/routes/documents.ts` uses multer diskStorage |
-| 49 | Token Blacklisting (Redis) | 🔵 Planned | — | TODO comment in logout endpoint | `backend/src/routes/auth.ts` POST /logout |
-| 50 | Native Mobile App | 🔵 Planned | — | Referenced in landing page FAQ | `frontend/src/app/page.tsx` FAQ section |
-| 51 | Email Verification on Signup | 🔵 Planned | — | Explicitly deferred in PLAN.md | `docs/PLAN.md` Phase 7 notes |
-| 52 | AI Layer (Phase 8) | 🔵 Planned | — | pgvector, RAG, anomaly detection | `docs/PLAN.md` Phase 8 |
+| 47 | Notification Delivery (Email/Push) | ❌ Not Found | - | Notifications are logged to audit trail + console only | `backend/src/lib/notifications.ts` (stub) |
+| 48 | Cloudinary File Storage | 🟠 UI/Mock Only | - | Cloudinary env vars configured but files stored locally on disk | `backend/src/routes/documents.ts` uses multer diskStorage |
+| 49 | Token Blacklisting (Redis) | 🔵 Planned | - | TODO comment in logout endpoint | `backend/src/routes/auth.ts` POST /logout |
+| 50 | Native Mobile App | 🔵 Planned | - | Referenced in landing page FAQ | `frontend/src/app/page.tsx` FAQ section |
+| 51 | Email Verification on Signup | 🔵 Planned | - | Explicitly deferred in PLAN.md | `docs/PLAN.md` Phase 7 notes |
+| 52 | AI Layer (Phase 8) | 🔵 Planned | - | pgvector, RAG, anomaly detection | `docs/PLAN.md` Phase 8 |
 
 ---
 
@@ -198,7 +198,7 @@ The platform covers:
 | Vendor Ratings | ✅ Implemented | High | 1-5 stars, aggregation |
 | Analytics Dashboard | ✅ Implemented | High | Dues rate, resolution time, categories, vendors |
 | Audit Trail | ✅ Implemented | High | Every mutation logged, search, filter, export |
-| Notifications (Email/Push) | ❌ Not Found | High | Stub only — audit trail + console.log |
+| Notifications (Email/Push) | ❌ Not Found | High | Stub only - audit trail + console.log |
 | Rate Limiting | 🔵 Planned | Medium | Redis-backed limiter mentioned in PLAN.md but not implemented |
 | Frontend Tests | ❌ Not Found | High | No frontend test files detected |
 | Backend Tests | ✅ Implemented | High | 10 test files, Vitest + Supertest |
@@ -273,26 +273,26 @@ The platform covers:
 
 ## Verified Differentiators (Evidence-Based)
 
-1. **Multi-tenant architecture with structural isolation** — Every query is scoped by `societyId` through a repository pattern, not by convention. This is architecturally enforced, not just assumed.
+1. **Multi-tenant architecture with structural isolation** - Every query is scoped by `societyId` through a repository pattern, not by convention. This is architecturally enforced, not just assumed.
    - Evidence: `backend/src/db/tenant-scope.ts`, all route handlers include `societyId` in queries
 
-2. **Complete audit trail as infrastructure** — Every mutating operation writes before/after JSON snapshots to AuditLog, with export capability for committee transitions.
+2. **Complete audit trail as infrastructure** - Every mutating operation writes before/after JSON snapshots to AuditLog, with export capability for committee transitions.
    - Evidence: `backend/src/lib/audit.ts`, `backend/src/routes/audit-log.ts`
 
-3. **QR-coded visitor management with gate logging** — Residents pre-authorize visitors, guards scan QR codes, entry/exit is tracked.
+3. **QR-coded visitor management with gate logging** - Residents pre-authorize visitors, guards scan QR codes, entry/exit is tracked.
    - Evidence: `backend/src/routes/visitors.ts`, `frontend/src/app/dashboard/guard/page.tsx`
 
-4. **Automated dues reminders via background job queue** — BullMQ-powered scheduled reminders with configurable per-society windows.
+4. **Automated dues reminders via background job queue** - BullMQ-powered scheduled reminders with configurable per-society windows.
    - Evidence: `backend/src/queue/index.ts`, `backend/src/lib/due-reminders.ts`
 
-5. **Role-based permission matrix with hierarchy** — Five roles with resource-level permissions, hierarchy inheritance, and RBAC middleware.
+5. **Role-based permission matrix with hierarchy** - Five roles with resource-level permissions, hierarchy inheritance, and RBAC middleware.
    - Evidence: `backend/src/lib/permissions.ts`, `backend/src/middleware/rbac.ts`
 
 ## Potential Differentiators
 
-6. **Guard-specific tablet-friendly interface** — Purpose-built interface for security guards with large touch targets and mode switching.
-7. **Vendor rating system** — 1-5 star ratings tied to ticket closure with aggregation.
-8. **Invoice dispute mechanism** — Residents can flag invoices they disagree with.
+6. **Guard-specific tablet-friendly interface** - Purpose-built interface for security guards with large touch targets and mode switching.
+7. **Vendor rating system** - 1-5 star ratings tied to ticket closure with aggregation.
+8. **Invoice dispute mechanism** - Residents can flag invoices they disagree with.
 
 ---
 
@@ -301,31 +301,31 @@ The platform covers:
 ## Strengths
 
 - **Polished landing page** with scroll-reveal animations, editorial feature rows, pricing cards, FAQ accordion, and testimonials (`frontend/src/app/page.tsx`)
-- **Consistent design system** — reusable UI components: Card, StatusBadge, PageHeader, StatCard, EmptyState
-- **Role-based dashboards** — separate admin, resident, and guard interfaces with appropriate navigation
+- **Consistent design system** - reusable UI components: Card, StatusBadge, PageHeader, StatCard, EmptyState
+- **Role-based dashboards** - separate admin, resident, and guard interfaces with appropriate navigation
 - **Dark mode support** via ThemeProvider with localStorage persistence
-- **Mobile responsive** — bottom navigation for residents, responsive grids throughout
+- **Mobile responsive** - bottom navigation for residents, responsive grids throughout
 - **Guard interface** designed for tablet use with large touch targets and minimal complexity
-- **Attention-driven dashboards** — both admin and resident dashboards highlight items needing attention
+- **Attention-driven dashboards** - both admin and resident dashboards highlight items needing attention
 - **Status badges** with consistent color coding across the application
 - **Loading states** with spinner animations on all dashboard shells
 
 ## Weaknesses
 
-- **No search/filter on many list pages** — tickets, visitors, parcels could benefit from search
-- **No pagination UI** — cursor-based API pagination exists but frontend doesn't implement infinite scroll or load-more
-- **No empty state illustrations** — functional but minimal empty states
-- **No form validation feedback** — backend validation exists, but frontend forms rely on HTML5 validation only
-- **No toast/notification system** — success/error messages are inline, not persistent
+- **No search/filter on many list pages** - tickets, visitors, parcels could benefit from search
+- **No pagination UI** - cursor-based API pagination exists but frontend doesn't implement infinite scroll or load-more
+- **No empty state illustrations** - functional but minimal empty states
+- **No form validation feedback** - backend validation exists, but frontend forms rely on HTML5 validation only
+- **No toast/notification system** - success/error messages are inline, not persistent
 - **Guard "Recent Activity" tab** is a placeholder (empty state only)
 
 ## Presentation-Worthy Screens
 
-1. **Admin Dashboard** (`/dashboard/admin`) — summary cards, attention items, recent tickets
-2. **Resident Dashboard** (`/dashboard/resident`) — quick actions grid, attention items, activity feed
-3. **Guard Interface** (`/dashboard/guard`) — QR verification, visitor details card, gate actions
-4. **Landing Page Hero** — modern design with floating product preview cards
-5. **Admin Analytics** (`/dashboard/admin/analytics`) — charts and performance metrics
+1. **Admin Dashboard** (`/dashboard/admin`) - summary cards, attention items, recent tickets
+2. **Resident Dashboard** (`/dashboard/resident`) - quick actions grid, attention items, activity feed
+3. **Guard Interface** (`/dashboard/guard`) - QR verification, visitor details card, gate actions
+4. **Landing Page Hero** - modern design with floating product preview cards
+5. **Admin Analytics** (`/dashboard/admin/analytics`) - charts and performance metrics
 
 ---
 
@@ -353,7 +353,7 @@ Database (PostgreSQL via Prisma ORM)
     ↓
 External Services
     ├── Redis (BullMQ queue for due reminders)
-    ├── Safepay (payment gateway — hosted checkout)
+    ├── Safepay (payment gateway - hosted checkout)
     └── Local file storage (documents, ticket photos, parcel photos)
 ```
 
@@ -407,9 +407,9 @@ External Services
 
 | Method | Route | Purpose | Auth | Role Required | Evidence |
 |---|---|---|---|---|---|
-| POST | /api/v1/auth/signup | Create society + admin | No | — | `auth.ts` |
-| POST | /api/v1/auth/login | Authenticate user | No | — | `auth.ts` |
-| POST | /api/v1/auth/refresh | Refresh access token | No | — | `auth.ts` |
+| POST | /api/v1/auth/signup | Create society + admin | No | - | `auth.ts` |
+| POST | /api/v1/auth/login | Authenticate user | No | - | `auth.ts` |
+| POST | /api/v1/auth/refresh | Refresh access token | No | - | `auth.ts` |
 | GET | /api/v1/auth/me | Get current user profile | Yes | Any | `auth.ts` |
 | POST | /api/v1/auth/invite | Invite resident/guard | Yes | Committee Admin | `auth.ts` |
 | POST | /api/v1/auth/memberships/:id/revoke | Revoke membership | Yes | Committee Admin | `auth.ts` |
@@ -426,7 +426,7 @@ External Services
 | POST | /api/v1/invoices | Create invoice | Yes | Committee Admin | `invoices.ts` |
 | POST | /api/v1/invoices/:id/pay | Initiate Safepay payment | Yes | Resident (unit owner) | `invoices.ts` |
 | POST | /api/v1/invoices/:id/dispute | Dispute invoice | Yes | Resident (unit owner) | `invoices.ts` |
-| POST | /api/v1/payments/webhook | Safepay webhook (public) | No (signature-verified) | — | `payments.ts` |
+| POST | /api/v1/payments/webhook | Safepay webhook (public) | No (signature-verified) | - | `payments.ts` |
 | POST | /api/v1/amenities/book | Book amenity slot | Yes | Resident | `amenities.ts` |
 | POST | /api/v1/visitors | Create visitor pass | Yes | Resident | `visitors.ts` |
 | POST | /api/v1/visitors/verify/:qrToken | Verify QR at gate | Yes | Guard/Admin | `visitors.ts` |
@@ -464,8 +464,8 @@ External Services
 ## Security Observations
 - Token refresh silently handles expired access tokens (frontend retry logic in `api.ts`)
 - Logout clears cookies but does NOT blacklist refresh tokens (TODO noted in code)
-- CORS is set to `origin: true` (allows any origin with credentials) — appropriate for development, needs restriction in production
-- JWT secrets have dev fallbacks — production deployment must set proper secrets
+- CORS is set to `origin: true` (allows any origin with credentials) - appropriate for development, needs restriction in production
+- JWT secrets have dev fallbacks - production deployment must set proper secrets
 
 ---
 
@@ -474,7 +474,7 @@ External Services
 ## Frontend Validation
 - HTML5 `required` attributes on form fields
 - Zod schemas defined in shared package (imported by backend)
-- **No frontend Zod validation** — forms rely on browser validation + backend error responses
+- **No frontend Zod validation** - forms rely on browser validation + backend error responses
 
 ## Backend Validation
 - **Zod** at every route boundary before business logic
@@ -520,8 +520,8 @@ External Services
 ## Test Coverage
 - Per PROGRESS.md: 99/99 tests passing as of Phase 7 Slice 4
 - Tests cover: ticket status transitions, rating rules, permission matrix, payment webhook verification, reminder idempotency, analytics aggregation
-- **No frontend tests** — no test files found in frontend directory
-- **No end-to-end tests** — no Cypress/Playwright detected
+- **No frontend tests** - no test files found in frontend directory
+- **No end-to-end tests** - no Cypress/Playwright detected
 
 ## Manual Testing
 - PROGRESS.md contains manual test guides for each slice
@@ -532,39 +532,39 @@ External Services
 # 19. Code Quality Audit
 
 ## Strengths
-- **Consistent architecture** — every route follows: validate → auth → RBAC → tenant-scoped DB → audit log → response
-- **TypeScript strict mode** — used throughout
-- **Shared types** — Zod schemas and TypeScript interfaces in shared package, imported by both frontend and backend
-- **Soft-delete pattern** — consistent `deletedAt` column on all tenant-scoped entities
-- **Separation of concerns** — middleware, lib, routes, db layers well-separated
-- **Audit logging as infrastructure** — single `logAudit()` helper used everywhere
-- **Payment provider abstraction** — `PaymentProvider` interface allows provider swap
-- **Graceful degradation** — BullMQ queue starts in "disabled" mode if Redis unavailable
+- **Consistent architecture** - every route follows: validate → auth → RBAC → tenant-scoped DB → audit log → response
+- **TypeScript strict mode** - used throughout
+- **Shared types** - Zod schemas and TypeScript interfaces in shared package, imported by both frontend and backend
+- **Soft-delete pattern** - consistent `deletedAt` column on all tenant-scoped entities
+- **Separation of concerns** - middleware, lib, routes, db layers well-separated
+- **Audit logging as infrastructure** - single `logAudit()` helper used everywhere
+- **Payment provider abstraction** - `PaymentProvider` interface allows provider swap
+- **Graceful degradation** - BullMQ queue starts in "disabled" mode if Redis unavailable
 
 ## Areas for Improvement
-- **No frontend tests** — significant gap for a production application
-- **Duplicated `getUserUnitIds` helper** — appears in invoices.ts, visitors.ts, polls.ts, parcels.ts (should be extracted)
+- **No frontend tests** - significant gap for a production application
+- **Duplicated `getUserUnitIds` helper** - appears in invoices.ts, visitors.ts, polls.ts, parcels.ts (should be extracted)
 - **Some `any` types** in route handlers for Prisma query results
-- **No rate limiting** — mentioned in PLAN.md but not implemented
-- **File uploads stored locally** — not production-ready (Cloudinary/S3 needed)
-- **CORS wide open** — `origin: true` allows any origin
+- **No rate limiting** - mentioned in PLAN.md but not implemented
+- **File uploads stored locally** - not production-ready (Cloudinary/S3 needed)
+- **CORS wide open** - `origin: true` allows any origin
 
 ---
 
 # 20. Performance & Scalability
 
 ## Observed Patterns
-- Cursor-based pagination on list endpoints (not offset-based) — good for large datasets
-- Database indexes on all `societyId` columns — prevents full table scans per tenant
+- Cursor-based pagination on list endpoints (not offset-based) - good for large datasets
+- Database indexes on all `societyId` columns - prevents full table scans per tenant
 - Composite indexes on high-traffic queries (`[societyId, status]`, `[societyId, createdAt]`)
 - Prisma connection pooling with singleton pattern in development
 
 ## Potential Risks
 - **N+1 queries** on some list endpoints that include related data (e.g., tickets with resident name + unit number)
-- **No caching layer** — every request hits PostgreSQL directly
-- **File uploads on local disk** — not scalable, no CDN
-- **Analytics queries** scan all tickets/invoices for the society — could be slow with large datasets
-- **No pagination UI** — all list data loaded at once in some frontend pages
+- **No caching layer** - every request hits PostgreSQL directly
+- **File uploads on local disk** - not scalable, no CDN
+- **Analytics queries** scan all tickets/invoices for the society - could be slow with large datasets
+- **No pagination UI** - all list data loaded at once in some frontend pages
 
 ---
 
@@ -581,13 +581,13 @@ External Services
 - Error messages don't leak stack traces or internal details
 
 ## Concerns
-- **Token blacklisting not implemented** — logout doesn't invalidate refresh tokens
-- **CORS wide open** (`origin: true, credentials: true`) — any origin can make authenticated requests
-- **JWT secrets have dev fallbacks** — production must override
-- **No rate limiting** — auth endpoints vulnerable to brute force
-- **No CSRF protection** — relying on SameSite cookie attribute
-- **File uploads stored without access control** — ticket photos and documents served without auth on the photo download endpoint (`/photo/:filename`)
-- **SQL injection not possible** — Prisma ORM uses parameterized queries
+- **Token blacklisting not implemented** - logout doesn't invalidate refresh tokens
+- **CORS wide open** (`origin: true, credentials: true`) - any origin can make authenticated requests
+- **JWT secrets have dev fallbacks** - production must override
+- **No rate limiting** - auth endpoints vulnerable to brute force
+- **No CSRF protection** - relying on SameSite cookie attribute
+- **File uploads stored without access control** - ticket photos and documents served without auth on the photo download endpoint (`/photo/:filename`)
+- **SQL injection not possible** - Prisma ORM uses parameterized queries
 
 ---
 
@@ -615,9 +615,9 @@ External Services
 | supertest | ^7.0.0 | API testing |
 
 ## Observations
-- `stripe` is in package.json but the project uses Safepay — dead dependency
+- `stripe` is in package.json but the project uses Safepay - dead dependency
 - `ioredis` is installed but token blacklisting not implemented yet
-- `@types/multer` installed — indicates multer integration is real
+- `@types/multer` installed - indicates multer integration is real
 
 ## Environment Variables
 - DATABASE_URL, REDIS_URL, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET
@@ -637,13 +637,13 @@ External Services
 - **No tickets, invoices, notices, or other operational data seeded**
 
 ## Landing Page
-- Testimonials are fabricated (Ahmed Raza, Fatima Malik, Usman Khan) — not real users
-- Trust bar (Capterra, G2, Trustpilot, Google ratings) is UI-only — no actual review platform integration
-- Pricing page references "200+ communities across Pakistan" — unsupported claim
-- Hero floating cards show hardcoded amounts ("Rs 84,500", "Visitor approved · Unit 201") — static mockup
+- Testimonials are fabricated (Ahmed Raza, Fatima Malik, Usman Khan) - not real users
+- Trust bar (Capterra, G2, Trustpilot, Google ratings) is UI-only - no actual review platform integration
+- Pricing page references "200+ communities across Pakistan" - unsupported claim
+- Hero floating cards show hardcoded amounts ("Rs 84,500", "Visitor approved · Unit 201") - static mockup
 
 ## Frontend
-- Dashboard pages pull real data from API — not hardcoded
+- Dashboard pages pull real data from API - not hardcoded
 - Guard interface fetches real units from API
 - No mock API intercepts or fake data generators in production code
 
@@ -701,7 +701,7 @@ External Services
 ## 👍 GOOD TO DEMO
 
 ### Demo 4: Admin Dashboard Overview
-- Summary cards, attention items, recent tickets — shows operational visibility
+- Summary cards, attention items, recent tickets - shows operational visibility
 
 ### Demo 5: Community Polling
 - Admin creates poll → activates → Resident votes → results visible
@@ -756,15 +756,15 @@ External Services
 | **Target customer** | Housing society committees, apartment complex management |
 | **Target user** | Committee admins, residents, security guards |
 | **Core value proposition** | Replace scattered manual processes with one connected, auditable platform |
-| **Product category** | Multi-tenant SaaS — Property/Community Management |
+| **Product category** | Multi-tenant SaaS - Property/Community Management |
 | **Primary use case** | Residential society management (Pakistan market) |
 | **Secondary use cases** | Gated communities, cooperative housing, student housing |
 
 ## Potential Business Models (Not Implemented)
-- **Per-community pricing** — monthly subscription per society
-- **Per-unit pricing** — fee per managed unit
-- **Freemium** — free tier for small societies, paid for advanced features
-- **Enterprise licensing** — large multi-society organizations
+- **Per-community pricing** - monthly subscription per society
+- **Per-unit pricing** - fee per managed unit
+- **Freemium** - free tier for small societies, paid for advanced features
+- **Enterprise licensing** - large multi-society organizations
 
 ---
 
@@ -898,16 +898,16 @@ The product competes with:
 # 35. Elevator Pitch Material
 
 ## One-Line Description (~20 words)
-> OmniHome is a connected platform that replaces WhatsApp and spreadsheets for managing apartment societies — payments, maintenance, visitors, and governance.
+> OmniHome is a connected platform that replaces WhatsApp and spreadsheets for managing apartment societies - payments, maintenance, visitors, and governance.
 
 ## Short Description (~60 words)
-> OmniHome is a multi-tenant SaaS platform for residential community management. It replaces scattered WhatsApp messages and paper logs with centralized tools for dues collection (with online payments), maintenance ticketing, QR-coded visitor management, community polling, document storage, and a complete audit trail — all with role-based dashboards for admins, residents, and security guards.
+> OmniHome is a multi-tenant SaaS platform for residential community management. It replaces scattered WhatsApp messages and paper logs with centralized tools for dues collection (with online payments), maintenance ticketing, QR-coded visitor management, community polling, document storage, and a complete audit trail - all with role-based dashboards for admins, residents, and security guards.
 
 ## Detailed Description (~150 words)
 > OmniHome is a full-stack apartment management platform built for housing societies in Pakistan. It provides committee admins with centralized control over buildings, units, residents, maintenance, finances, and security. Residents get a personalized dashboard to raise tickets, pay dues online via Safepay, book amenities, vote in polls, and manage visitor passes with QR codes. Security guards use a purpose-built tablet interface to verify visitors and log gate entry/exit. Every action is recorded in a searchable audit trail, and automated dues reminders reduce manual follow-up. The platform is built on a multi-tenant architecture ensuring complete data isolation between societies, with role-based access control enforcing permissions at every level.
 
 ## Problem Statement
-> Housing societies manage dozens of daily operations — dues collection, maintenance requests, visitor access, notices — through scattered WhatsApp messages, paper logs, and spreadsheets, leading to lost information, no accountability, and manual overhead.
+> Housing societies manage dozens of daily operations - dues collection, maintenance requests, visitor access, notices - through scattered WhatsApp messages, paper logs, and spreadsheets, leading to lost information, no accountability, and manual overhead.
 
 ## Solution Statement
 > OmniHome centralizes every community workflow into one connected platform with role-based dashboards, ensuring every action is tracked, every payment is reconciled, and every visitor is verified.
@@ -918,15 +918,15 @@ The product competes with:
 
 ## Recommended Slide Sequence
 
-1. **Opening Story** — "Every housing society faces the same problem: managing community life through WhatsApp and paper"
-2. **Problem** — 4-5 pain points with relatable scenarios
-3. **Solution** — OmniHome overview with 3-4 key features
-4. **Product Demo** — Screenshots of admin dashboard, resident dashboard, guard interface
-5. **Key Features** — QR visitors, online payments, maintenance tracking, audit trail
-6. **Architecture** — Multi-tenant, role-based, secure
-7. **Market Opportunity** — Pakistan housing society market
-8. **Business Model** — Per-community SaaS pricing (proposed)
-9. **Roadmap** — Phase 8 AI features as future vision
+1. **Opening Story** - "Every housing society faces the same problem: managing community life through WhatsApp and paper"
+2. **Problem** - 4-5 pain points with relatable scenarios
+3. **Solution** - OmniHome overview with 3-4 key features
+4. **Product Demo** - Screenshots of admin dashboard, resident dashboard, guard interface
+5. **Key Features** - QR visitors, online payments, maintenance tracking, audit trail
+6. **Architecture** - Multi-tenant, role-based, secure
+7. **Market Opportunity** - Pakistan housing society market
+8. **Business Model** - Per-community SaaS pricing (proposed)
+9. **Roadmap** - Phase 8 AI features as future vision
 10. **Team/Closing**
 
 ## Strongest Opening Story
@@ -956,7 +956,7 @@ The product competes with:
 5. Role-Based Dashboards
 
 ## Hero Screenshot
-> Admin Dashboard — shows summary cards, attention items, and recent tickets. Demonstrates centralized visibility.
+> Admin Dashboard - shows summary cards, attention items, and recent tickets. Demonstrates centralized visibility.
 
 ## Technology Badges
 > Next.js · Express · PostgreSQL · Safepay · Tailwind CSS
@@ -972,16 +972,16 @@ The product competes with:
 > "In Pakistan, housing societies manage everything through WhatsApp groups and paper logs. OmniHome is a SaaS platform that centralizes all community operations. Committee admins get a dashboard showing open tickets, pending dues, and attention items. Residents can pay maintenance dues online through Safepay, raise maintenance tickets with photos, book amenities, vote in community polls, and create QR-coded visitor passes. Security guards use a tablet interface to verify visitors at the gate. Every action is recorded in a searchable audit trail, and automated reminders reduce manual follow-up."
 
 ## 3-Minute Demo Narrative
-> 1. Show landing page — "This is the public face of OmniHome"
-> 2. Login as admin — "Committee admin sees a centralized dashboard"
-> 3. Create a building and unit — "Setting up the society takes minutes"
-> 4. Invite a resident — "One-click resident onboarding"
-> 5. Login as resident — "Resident sees their personalized dashboard"
-> 6. Raise a maintenance ticket — "Structured complaint tracking"
-> 7. Switch to admin — assign vendor, update status — "Full lifecycle management"
-> 8. Create an invoice — "Financial management"
-> 9. Create a visitor pass — "QR-coded security"
-> 10. Show audit trail — "Every action is recorded"
+> 1. Show landing page - "This is the public face of OmniHome"
+> 2. Login as admin - "Committee admin sees a centralized dashboard"
+> 3. Create a building and unit - "Setting up the society takes minutes"
+> 4. Invite a resident - "One-click resident onboarding"
+> 5. Login as resident - "Resident sees their personalized dashboard"
+> 6. Raise a maintenance ticket - "Structured complaint tracking"
+> 7. Switch to admin - assign vendor, update status - "Full lifecycle management"
+> 8. Create an invoice - "Financial management"
+> 9. Create a visitor pass - "QR-coded security"
+> 10. Show audit trail - "Every action is recorded"
 
 ---
 
@@ -990,65 +990,65 @@ The product competes with:
 ### Product Questions
 
 **Q: How many user roles does the platform support?**
-A: 5 roles — SUPER_ADMIN, COMMITTEE_ADMIN, RESIDENT, SECURITY_GUARD, VENDOR. COMMITTEE_ADMIN and RESIDENT are the primary roles. SECURITY_GUARD has a dedicated interface. VENDOR is referenced by name on tickets but has no direct system access.
-Confidence: HIGH — `backend/src/lib/permissions.ts`
+A: 5 roles - SUPER_ADMIN, COMMITTEE_ADMIN, RESIDENT, SECURITY_GUARD, VENDOR. COMMITTEE_ADMIN and RESIDENT are the primary roles. SECURITY_GUARD has a dedicated interface. VENDOR is referenced by name on tickets but has no direct system access.
+Confidence: HIGH - `backend/src/lib/permissions.ts`
 
 **Q: Can residents pay maintenance dues online?**
 A: Yes, through Safepay hosted checkout. Residents click "Pay" on an invoice, are redirected to Safepay's payment page, and upon completion, a webhook updates the invoice status. If Safepay is not configured, payments fall back to offline mode.
-Confidence: HIGH — `backend/src/routes/invoices.ts` POST /:id/pay, `backend/src/routes/payments.ts`
+Confidence: HIGH - `backend/src/routes/invoices.ts` POST /:id/pay, `backend/src/routes/payments.ts`
 
 **Q: How does visitor management work?**
 A: Residents create visitor passes with visitor details. A QR token is generated. The visitor shows the QR code/token at the gate. The security guard enters it in the guard interface, which verifies the pass and auto-approves if pending. The guard then records check-in and check-out. Passes auto-expire after 24 hours and auto-revoke when a membership is revoked.
-Confidence: HIGH — `backend/src/routes/visitors.ts`
+Confidence: HIGH - `backend/src/routes/visitors.ts`
 
 ### Technical Questions
 
 **Q: How is multi-tenancy enforced?**
 A: Every tenant-scoped database query includes a `societyId` filter. The `loadMembership` middleware loads the user's membership for the current society context. The `requireRole` middleware checks permissions against the membership role. The `tenant-scope.ts` module provides repository wrappers that automatically apply societyId filtering.
-Confidence: HIGH — `backend/src/db/tenant-scope.ts`, `backend/src/middleware/auth.ts`
+Confidence: HIGH - `backend/src/db/tenant-scope.ts`, `backend/src/middleware/auth.ts`
 
 **Q: Is the payment integration real?**
 A: Yes. Safepay hosted checkout is fully implemented with passport token creation, tracker creation, redirect flow, webhook verification (HMAC-SHA512), and server-side reconciliation fallback. Payments fall back to offline mode when Safepay keys are not configured.
-Confidence: HIGH — `backend/src/lib/payment-provider.ts`
+Confidence: HIGH - `backend/src/lib/payment-provider.ts`
 
 **Q: What happens if Redis is down?**
 A: The BullMQ queue starts in a safe "disabled" mode. The API keeps working normally. Automated dues reminders don't fire, but admins can trigger them manually via the settings page. This is explicitly handled in the queue module.
-Confidence: HIGH — `backend/src/queue/index.ts`
+Confidence: HIGH - `backend/src/queue/index.ts`
 
 ### Security Questions
 
 **Q: How are passwords stored?**
 A: Bcrypt with 12 salt rounds. Passwords are never stored in plain text.
-Confidence: HIGH — `backend/src/lib/auth.ts`
+Confidence: HIGH - `backend/src/lib/auth.ts`
 
 **Q: Is there an audit trail?**
 A: Yes. Every mutating operation (create, update, delete) across all modules writes to an AuditLog table with the actor's ID, action type, entity type, entity ID, and optional before/after JSON snapshots. Audit logs are searchable, filterable, and exportable.
-Confidence: HIGH — `backend/src/lib/audit.ts`, `backend/src/routes/audit-log.ts`
+Confidence: HIGH - `backend/src/lib/audit.ts`, `backend/src/routes/audit-log.ts`
 
 ### Future Scope Questions
 
 **Q: Is there an AI layer?**
 A: Not yet. Phase 8 in the plan includes pgvector for semantic search, vendor auto-assignment suggestions, anomaly detection, and natural-language document queries. This is planned but not started.
-Confidence: HIGH — `docs/PLAN.md` Phase 8
+Confidence: HIGH - `docs/PLAN.md` Phase 8
 
 **Q: Is there a mobile app?**
 A: Not yet. The web application is fully responsive and works on mobile browsers. A native mobile app is mentioned in the landing page FAQ as a future plan but is not implemented.
-Confidence: HIGH — responsive design in all frontend files
+Confidence: HIGH - responsive design in all frontend files
 
 ---
 
 # 40. Final Recommendations
 
-1. **Add email notifications** — This is the highest-impact missing feature. Without it, users must actively check the platform.
-2. **Restrict CORS for production** — The current `origin: true` setting allows any origin.
-3. **Implement rate limiting** — Protect auth endpoints from brute force attacks.
-4. **Wire up Cloudinary** — The env vars are configured; the code just needs to use the SDK instead of local disk.
-5. **Add frontend tests** — Zero frontend test coverage is a significant gap.
-6. **Extract duplicated helpers** — `getUserUnitIds` is copy-pasted across 4 route files.
-7. **Remove dead `stripe` dependency** — The project uses Safepay; Stripe is unused.
-8. **Enhance seed data** — Add sample tickets, invoices, notices for better demo experience.
-9. **Add search/filter to list pages** — Tickets, visitors, parcels, and other lists need filtering.
-10. **Add pagination UI** — The API supports cursor-based pagination; the frontend doesn't use it.
+1. **Add email notifications** - This is the highest-impact missing feature. Without it, users must actively check the platform.
+2. **Restrict CORS for production** - The current `origin: true` setting allows any origin.
+3. **Implement rate limiting** - Protect auth endpoints from brute force attacks.
+4. **Wire up Cloudinary** - The env vars are configured; the code just needs to use the SDK instead of local disk.
+5. **Add frontend tests** - Zero frontend test coverage is a significant gap.
+6. **Extract duplicated helpers** - `getUserUnitIds` is copy-pasted across 4 route files.
+7. **Remove dead `stripe` dependency** - The project uses Safepay; Stripe is unused.
+8. **Enhance seed data** - Add sample tickets, invoices, notices for better demo experience.
+9. **Add search/filter to list pages** - Tickets, visitors, parcels, and other lists need filtering.
+10. **Add pagination UI** - The API supports cursor-based pagination; the frontend doesn't use it.
 
 ---
 
@@ -1056,7 +1056,7 @@ Confidence: HIGH — responsive design in all frontend files
 
 | Category | Finding |
 |---|---|
-| **Product** | OmniHome — Multi-tenant SaaS for residential community management |
+| **Product** | OmniHome - Multi-tenant SaaS for residential community management |
 | **Target Users** | Housing society committee admins, residents, security guards |
 | **Core Problem** | Community operations managed through WhatsApp, paper logs, spreadsheets |
 | **Core Solution** | One connected platform with role-based dashboards and complete audit trail |
@@ -1074,7 +1074,7 @@ Confidence: HIGH — responsive design in all frontend files
 
 ---
 
-# Appendix A — Evidence Index
+# Appendix A - Evidence Index
 
 | Finding | Evidence | Confidence |
 |---|---|---|
@@ -1099,7 +1099,7 @@ Confidence: HIGH — responsive design in all frontend files
 
 ---
 
-# Appendix B — Important Files
+# Appendix B - Important Files
 
 ## Backend
 | File | Significance |
@@ -1160,7 +1160,7 @@ Confidence: HIGH — responsive design in all frontend files
 
 ---
 
-# Appendix C — Unresolved Questions
+# Appendix C - Unresolved Questions
 
 | Question | Why It Matters | Evidence Missing |
 |---|---|---|
